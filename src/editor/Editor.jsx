@@ -11,7 +11,7 @@ import { resolveTheme } from '../theme/themes.js';
 import { isComposingKey } from '../workspace/commands.js';
 import { desktop } from '../workspace/desktop.js';
 import { changeFenceLanguage, CodeLanguageControl, codeFenceAt } from './CodeLanguageControl.jsx';
-import { domContext, restoreEditorContext, sourceContext, spellingAt } from './editor-context.js';
+import { contextSelection, domContext, restoreEditorContext, sourceContext, spellingAt } from './editor-context.js';
 import { formatMarkdown } from './format.js';
 import { matchMarkdown, projectMarkdownEdit, replacementText } from './markdown-edits.js';
 import { handleRichCodeKeys } from './rich-code-keys.js';
@@ -209,6 +209,7 @@ export function Editor({
   const activeBlock = useRef(null);
   const activeCell = useRef(null);
   const editorContext = useRef(null);
+  const contextPointer = useRef(null);
   const [tableSelection, setTableSelection] = useState(null);
   const [activeFence, setActiveFence] = useState(null);
   const [hoveredFence, setHoveredFence] = useState(null);
@@ -775,18 +776,40 @@ export function Editor({
     latest.current.onLink?.(href);
   }
 
+  function editorContextTarget(target) {
+    const editable = rich.current?.vditor.ir.element;
+    if (mode === 'live' && editable?.contains(target)) return { root: editable, editable: true };
+    if (mode !== 'live' && target.closest?.('.editor-preview') && previewHost.current) {
+      return { root: previewHost.current, editable: false };
+    }
+    if ((mode === 'source' || mode === 'split') && sourceHost.current?.contains(target) && source.current) {
+      return { view: source.current };
+    }
+    return null;
+  }
+
+  function captureContextPointer(event) {
+    contextPointer.current = null;
+    const macControlClick = desktop.platform === 'darwin' && event.button === 0 && event.ctrlKey && event.pointerType === 'mouse';
+    if (!onContextMenu || (event.button !== 2 && !macControlClick)) return;
+    const target = editorContextTarget(event.target);
+    if (target) contextPointer.current = {
+      snapshot: contextSelection(target), docId, mode, x: event.clientX, y: event.clientY, time: event.timeStamp,
+    };
+  }
+
   function showEditorContext(event) {
     if (!onContextMenu || event.defaultPrevented) return;
     const keyboard = event.type === 'keydown' || (!event.clientX && !event.clientY);
-    const editable = rich.current?.vditor.ir.element;
-    let context;
-    if (mode === 'live' && editable?.contains(event.target)) context = domContext(event, editable, true, keyboard);
-    else if (mode !== 'live' && event.target.closest?.('.editor-preview') && previewHost.current) {
-      context = domContext(event, previewHost.current, false, keyboard);
-    } else if ((mode === 'source' || mode === 'split') && sourceHost.current?.contains(event.target) && source.current) {
-      context = sourceContext(event, source.current, keyboard);
-    }
-    if (!context) return;
+    const target = editorContextTarget(event.target);
+    if (!target) return;
+    const pointer = contextPointer.current;
+    contextPointer.current = null;
+    const samePointer = !keyboard && pointer?.docId === docId && pointer.mode === mode &&
+      Math.abs(pointer.x - event.clientX) <= 1 && Math.abs(pointer.y - event.clientY) <= 1 && event.timeStamp - pointer.time < 2000;
+    const snapshot = samePointer ? pointer.snapshot : undefined;
+    const context = target.view ? sourceContext(event, target.view, keyboard, snapshot) :
+      domContext(event, target.root, target.editable, keyboard, snapshot);
 
     const spelling = mode === 'live' && spellcheck && context.kind === 'text'
       ? spellingAt(context.range, desktop.spellingSuggestions) : null;
@@ -801,7 +824,7 @@ export function Editor({
     });
   }
 
-  function contextCommand(id) {
+  function contextCommand(id, payload) {
     const context = editorContext.current;
     if (!context || context.docId !== content.current.id || context.mode !== latest.current.mode) return false;
     if (id === 'copy-code' && context.codeText !== undefined) return desktop.writeClipboard({ text: context.codeText });
@@ -831,7 +854,7 @@ export function Editor({
       return true;
     }
     if (tableContextActions[id] && context.cell?.isConnected) return tableCommand(tableContextActions[id], context.cell);
-    if (['bold', 'italic', 'undo', 'redo'].includes(id)) return command(id);
+    if (['bold', 'italic', 'strike', 'inline-code', 'link', 'table', 'code', 'undo', 'redo'].includes(id)) return command(id, payload);
     if (!Object.hasOwn(pasteActions, id)) return false;
     if (desktop.editClipboard) return desktop.editClipboard(pasteActions[id]);
     return navigator.clipboard.readText().then(text => {
@@ -870,7 +893,7 @@ export function Editor({
 
   return (
     <div className={`editor-surface editor-mode-${mode}${focusMode ? ' editor-focus-mode' : ''}${typewriter ? ' editor-typewriter' : ''}`}
-      onClickCapture={handleLink} onPasteCapture={handleFiles} onDropCapture={handleFiles}
+      onClickCapture={handleLink} onPasteCapture={handleFiles} onDropCapture={handleFiles} onPointerDownCapture={captureContextPointer}
       onContextMenu={showEditorContext} onKeyDown={event => {
         if (!isComposingKey(event.nativeEvent) && !event.ctrlKey && !event.metaKey && !event.altKey &&
           (event.key === 'ContextMenu' || event.shiftKey && event.key === 'F10')) showEditorContext(event);

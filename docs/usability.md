@@ -23,7 +23,9 @@
 
 ## 右键与代码语言
 
-文件列表与标签页以右击的文档为操作目标。审阅已打开的后台文档时使用其编辑稿，审阅磁盘文件时将它后台打开。正文菜单把剪贴板和格式操作放在选区旁，把行列、代码语言、链接地址等操作放在相应元素旁。菜单可用方向键、回车和 `Esc` 操作。参考了 VS Code 对菜单分组的说明、Obsidian 的文件和表格菜单，以及 Typora 的表格、链接和围栏工具。[VS Code 菜单指南](https://code.visualstudio.com/api/ux-guidelines/context-menus) · [Obsidian 文件列表](https://obsidian.md/help/plugins/file-explorer) · [Obsidian 表格](https://obsidian.md/help/advanced-syntax) · [Typora 代码围栏](https://support.typora.io/Code-Fences/)
+文件列表与标签页以右击的文档为操作目标。审阅已打开的后台文档时使用其编辑稿，审阅磁盘文件时将它后台打开。菜单可用方向键、回车和 `Esc` 操作。[Obsidian 文件列表](https://obsidian.md/help/plugins/file-explorer)
+
+普通正文右击先显示插入链接、表格和代码块，再显示粘贴、保存和审阅。右击选中文字先显示剪切、复制和格式，粘贴项注明会替换选区。右击选区外会收起旧选区，按点击位置提供操作。表格、代码块和链接在无选区时优先显示对应操作，有文字选区时剪切和复制优先。[VS Code 菜单指南](https://code.visualstudio.com/api/ux-guidelines/context-menus) · [Obsidian 表格插入](https://obsidian.md/help/advanced-syntax) · [Typora 复制与粘贴](https://support.typora.io/Copy-and-Paste/)
 
 即时编辑的代码块语言入口位于块右下角。输入语言名或别名后，方向键预选、回车应用，`Esc` 返回编辑。语言标记保存在围栏开头，代码文本原样保留。[Typora 语言选择](https://support.typora.io/Code-Fences-Language-Support/)
 
@@ -34,6 +36,7 @@
 - 核对有序和无序任务项继续时复选框未勾选，空任务项退出时保留外层列表或引用。核对即时代码块缩进和反缩进，并在非空代码块首字符前退格后保存验证围栏。
 - 从非当前标签、工作区及最近打开列表进入审阅。核对菜单标题、审阅目标和已存在的未保存内容，再对同一文档撤销审阅。
 - 在正文选区、代码块、表格和链接上分别打开菜单，核对目标与动作。选择新的代码语言并保存，检查围栏标记和代码正文。
+- 在即时编辑和源码中分别右击选区内、选区外及选中行右侧的空白。核对菜单顺序，检查选区内的复制和格式化、选区外的粘贴和插入位置。打开链接或表格对话框后确认插入，保存并检查 Markdown。
 - 用中文输入法搜索，在候选确认时保持面板打开。确认文字后再用方向键选择、回车执行。
 - 录入与现有命令重合的组合键并确认提示，保存一组可用键位，实际触发后恢复默认。
 - 断网打开同时含中文、英文和代码的文档。核对内置字体，在字体库导入并应用本地文件，再移除并确认回退。

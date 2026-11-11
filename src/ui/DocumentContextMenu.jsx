@@ -16,6 +16,10 @@ export function documentContextEvents(item, open) {
 
 export function DocumentContextMenu({ context, groups, onAction, onDismiss }) {
   const ref = useRef(null)
+  const { item } = context
+  const editor = item.kind === 'editor'
+  const selection = editor && item.detail.selection
+  const heading = selection ? '选中文字' : editor && item.detail.editable ? '当前位置' : item.name
 
   useLayoutEffect(() => {
     const menu = ref.current
@@ -60,8 +64,8 @@ export function DocumentContextMenu({ context, groups, onAction, onDismiss }) {
   }
 
   return <div ref={ref} className="context-menu tool-menu-list document-context-menu" role="menu"
-    aria-label={'操作 ' + context.item.name} onKeyDown={keyDown}>
-    <div className="document-context-name" aria-hidden="true" title={context.item.path || context.item.name}>{context.item.name}</div>
+    aria-label={editor ? `${heading} · ${item.name}` : `操作 ${item.name}`} data-selection={selection || undefined} onKeyDown={keyDown}>
+    <div className="document-context-name" aria-hidden="true" title={item.path || item.name}>{heading}</div>
     {groups.map((group, index) => <div key={group[0][0]} role="group">
       {index > 0 && <hr role="separator"/>}
       {group.map(([key, name]) => <button key={key} type="button" role="menuitem" tabIndex={-1}

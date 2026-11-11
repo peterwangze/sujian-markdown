@@ -18,3 +18,8 @@
   outline-offset: -2px;
   background: var(--hover);
 }
+
+.document-context-menu[data-selection] .document-context-name {
+  color: var(--accent-ink);
+  font-weight: 600;
+}

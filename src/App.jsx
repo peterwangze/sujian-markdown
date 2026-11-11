@@ -248,18 +248,20 @@ export default function App() {
     })
   }
 
-  function command(name, payload) {
+  function command(name, payload, contextDocId) {
     if (!active) return
+    if (contextDocId && activeId.current !== contextDocId) return
     if (mode === 'read') { notify('切换到编辑模式后即可修改。'); return }
     if (name === 'link' && !payload) {
-      setDialog({ type: 'link', label: editor.current?.getSelection() || '' })
+      setDialog({ type: 'link', label: editor.current?.getSelection() || '', contextDocId })
       return
     }
     if (name === 'table' && !payload) {
-      setDialog({ type: 'table' })
+      setDialog({ type: 'table', contextDocId })
       return
     }
-    editor.current?.command(name, payload)
+    if (contextDocId) editor.current?.contextCommand(name, payload)
+    else editor.current?.command(name, payload)
   }
 
   async function exportFile(format, options) {
@@ -510,18 +512,6 @@ export default function App() {
         ...spelling.suggestions.slice(0, 5).map((word, index) => ['spelling-' + index, word]),
         ['add-to-dictionary', '添加到词典'],
       ] : []
-      const editActions = []
-      if (selection) {
-        if (editable) editActions.push(['cut', '剪切'])
-        editActions.push(['copy', '复制'])
-        if (editable && kind !== 'code') editActions.push(['bold', '加粗'], ['italic', '斜体'])
-      }
-      if (editable && canPaste) {
-        editActions.push(['paste', '粘贴'])
-        if (kind !== 'code') editActions.push(['paste-plain', '粘贴为纯文本'])
-      }
-      if (editable) editActions.push(['undo', '撤销'], ['redo', '重做'])
-      editActions.push(['select-all', '全选'])
       const blockActions = []
       if (kind === 'code') {
         blockActions.push(['copy-code', '复制代码'])
@@ -534,7 +524,22 @@ export default function App() {
         if (!header) blockActions.push(['table-delete-row', '删除行'])
         if (columnCount !== 1) blockActions.push(['table-delete-column', '删除列'])
       }
-      return [spellingActions, blockActions, editActions, documentActions].filter(group => group.length)
+      const historyActions = editable ? [['undo', '撤销'], ['redo', '重做'], ['select-all', '全选']] : [['select-all', '全选']]
+      const pasteActions = []
+      if (editable && canPaste) {
+        pasteActions.push(['paste', selection ? '粘贴并替换选区' : '粘贴'])
+        if (kind !== 'code') pasteActions.push(['paste-plain', selection ? '用纯文本替换选区' : '粘贴为纯文本'])
+      }
+      if (selection) {
+        const selectionActions = editable ? [['cut', '剪切'], ['copy', '复制']] : [['copy', '复制']]
+        const formatActions = editable && kind !== 'code'
+          ? [['bold', '加粗'], ['italic', '斜体'], ['strike', '删除线'], ['inline-code', '行内代码']] : []
+        return [selectionActions, formatActions, blockActions, pasteActions, documentActions, historyActions].filter(group => group.length)
+      }
+      const insertActions = editable && kind === 'text'
+        ? [['link', '插入链接…'], ['table', '插入表格…'], ['code', '插入代码块']] : []
+      if (editable) documentActions.unshift(['save-document', '保存文档'])
+      return [spellingActions, blockActions, insertActions, pasteActions, documentActions, historyActions].filter(group => group.length)
     }
     documentActions.push(['open-document', '打开文档'])
     if (contextDoc) documentActions.push(['save-document', '保存'], ['close-document', '关闭标签'])
@@ -550,19 +555,21 @@ export default function App() {
       else if (item.path) run(async () => openReview(await workspace.openPath(item.path, { activate: false })))
     }
     if (key === 'undo-review' && doc) undoReview(doc)
+    if (key === 'save-document' && doc) {
+      if (activeId.current === doc.id) flushEditor()
+      run(() => workspace.save(doc.id))
+      return
+    }
     if (item.kind === 'editor') {
       if (activeId.current !== item.id || key === 'review' || key === 'undo-review') return
-      if (key === 'copy-link') run(() => desktop.writeClipboard({ text: item.detail.href }))
-      else run(() => editor.current?.contextCommand?.(key))
+      if (key === 'link' || key === 'table') {
+        if (editor.current?.contextCommand('restore-focus')) command(key, undefined, item.id)
+      } else run(() => editor.current?.contextCommand(key))
       return
     }
     if (key === 'open-document') {
       if (doc) selectDocument(doc.id)
       else if (item.path) run(() => openDocumentPath(item.path))
-    }
-    if (key === 'save-document' && doc) {
-      if (activeId.current === doc.id) flushEditor()
-      run(() => workspace.save(doc.id))
     }
     if (key === 'close-document' && doc) closeTab(doc.id)
     if (key === 'rename' || key === 'trash' || key === 'mkdir' || key === 'move') setDialog({ type: key, item })
@@ -730,7 +737,7 @@ export default function App() {
         event.preventDefault()
         const data = new FormData(event.currentTarget)
         closeDialog()
-        requestAnimationFrame(() => command('link', { href: data.get('href'), label: data.get('label') }))
+        requestAnimationFrame(() => command('link', { href: data.get('href'), label: data.get('label') }, dialog.contextDocId))
       }}>
         <label className="text-setting">文字<input name="label" defaultValue={dialog.label} placeholder="链接"/></label>
         <label className="text-setting">地址<input name="href" autoFocus required placeholder="https:// 或相对路径"/></label>
@@ -742,7 +749,7 @@ export default function App() {
         event.preventDefault()
         const data = new FormData(event.currentTarget)
         closeDialog()
-        requestAnimationFrame(() => command('table', { columns: +data.get('columns'), rows: +data.get('rows') }))
+        requestAnimationFrame(() => command('table', { columns: +data.get('columns'), rows: +data.get('rows') }, dialog.contextDocId))
       }}>
         <label className="setting"><span>列数</span><input type="number" name="columns" min="2" max="20" defaultValue="3" required/></label>
         <label className="setting"><span>数据行数</span><input type="number" name="rows" min="1" max="20" defaultValue="2" required/></label>
