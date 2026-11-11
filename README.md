@@ -1,32 +1,54 @@
-# 素笺 Sujian
+<p align="center">
+  <img src="build/icon.png" alt="素笺应用图标" width="76">
+</p>
 
-素笺是一款离线桌面 Markdown 编辑器。默认使用单栏即时编辑，也可以切换到源码、分栏预览和阅读模式。文件以 Markdown 存在本机。
+<h1 align="center">素笺 Sujian</h1>
 
-## 安装
+<p align="center"><strong>在排好版的 Markdown 里直接写作。</strong></p>
+<p align="center">直接打开本地 .md 文件，从写提纲到导出都在同一个窗口完成。</p>
+<p align="center"><a href="https://github.com/peterwangze/sujian-markdown/releases/tag/v1.0.0"><strong>下载 v1.0.0 离线安装包</strong></a> · Windows / macOS / Linux</p>
 
-从 [GitHub Releases](https://github.com/peterwangze/sujian-markdown/releases) 下载与系统和处理器匹配的安装包。
+![素笺暖白主题下的单栏即时编辑。左侧是本地文件树，正文展示标题、提纲、引用和表格。](docs/images/sujian-writing.png)
 
-| 系统 | 文件 | 安装 |
+## 从第一行写到交稿
+
+- **输入时就看见排版。** 标题、任务列表和表格随输入在原处呈现。需要精确修改标记时切到源码，需要对照时打开分栏预览，定稿后可以进入阅读模式。
+- **把整组文档放在手边。** 在标签页之间切换，从大纲跳到章节，用工作区搜索找到散在不同文件里的内容。长文档自动进入源码模式，便于滚动和查找。
+- **关窗后还能接着写。** 重启后可以从侧栏恢复未保存的草稿。文件被其他程序改动时，冲突面板会显示磁盘版本，也可以把正在编辑的内容另存成副本。
+- **断网也能导出成品。** 本地公式和 Mermaid 图表可离线渲染。安装包内置 Pandoc，可导出 PDF、HTML、PNG 长图、Word、EPUB 和 Reveal.js 幻灯片等格式。
+
+## 给正文留出空间
+
+暖白底色和衬线正文让文章易于通读，文件树与工具栏集中在页面边缘。可以调节字号和文档宽度，切到深墨主题，或隐藏侧栏。专注模式淡化周围段落，打字机模式让当前行保持在视野中。
+
+![素笺深墨主题下的分栏预览。左边是大纲和 Markdown 源码，右边渲染了公式与 Mermaid 流程图。](docs/images/sujian-split.png)
+
+*两张截图均来自 Windows 客户端，使用示例 Markdown 文档。*
+
+## 下载与安装
+
+| 系统 | x64 / Intel | ARM64 / Apple 芯片 |
 | --- | --- | --- |
-| Windows | `Sujian-*-win-x64.exe` 或 `Sujian-*-win-arm64.exe` | 双击安装程序 |
-| macOS | `Sujian-*-mac-x64.dmg` 或 `Sujian-*-mac-arm64.dmg` | 挂载 DMG，将 Sujian 拖进“应用程序” |
-| Linux | `Sujian-*-linux-*.AppImage` 或 `Sujian-*-linux-*.deb` | 赋予 AppImage 执行权限，或使用系统软件包管理器安装 DEB |
+| Windows | [EXE](https://github.com/peterwangze/sujian-markdown/releases/download/v1.0.0/Sujian-1.0.0-win-x64.exe) | [EXE](https://github.com/peterwangze/sujian-markdown/releases/download/v1.0.0/Sujian-1.0.0-win-arm64.exe) |
+| macOS 13+ | [DMG](https://github.com/peterwangze/sujian-markdown/releases/download/v1.0.0/Sujian-1.0.0-mac-x64.dmg) | [DMG](https://github.com/peterwangze/sujian-markdown/releases/download/v1.0.0/Sujian-1.0.0-mac-arm64.dmg) |
+| Linux | [AppImage](https://github.com/peterwangze/sujian-markdown/releases/download/v1.0.0/Sujian-1.0.0-linux-x86_64.AppImage) · [DEB](https://github.com/peterwangze/sujian-markdown/releases/download/v1.0.0/Sujian-1.0.0-linux-amd64.deb) | [AppImage](https://github.com/peterwangze/sujian-markdown/releases/download/v1.0.0/Sujian-1.0.0-linux-arm64.AppImage) · [DEB](https://github.com/peterwangze/sujian-markdown/releases/download/v1.0.0/Sujian-1.0.0-linux-arm64.deb) |
 
-安装包内置 Electron、Markdown 渲染资源和 Pandoc。处理本地文档和离线转换无需下载插件。
+- **Windows** 双击 EXE 安装。安装包未做 Authenticode 签名。ARM64 版的 Pandoc 使用 Windows 11 的 x64 仿真。
+- **macOS** 挂载 DMG 后，将素笺拖到“应用程序”。此版本采用临时签名，首次启动时可能需要在“隐私与安全性”中允许打开。[Apple 打开应用说明](https://support.apple.com/en-us/102445)
+- **Linux** 赋予 AppImage 执行权限后打开，或通过软件包管理器安装 DEB。运行依赖发行版提供的 Chromium 系统库。
 
-- Windows 安装程序使用未签名构建。ARM64 安装包内的 Pandoc 使用 Windows 11 的 x64 仿真。
-- macOS 需要 13 或更新版本，构建采用 ad-hoc 签名。首次打开时可能需要在“隐私与安全性”中允许打开应用。[Electron 平台要求](https://www.electronjs.org/blog/electron-44-0) · [Apple 打开应用说明](https://support.apple.com/en-us/102445)
-- Linux 需发行版提供 Chromium 所用的系统库。发布流程在 Ubuntu 24.04 的 x64 和 ARM64 运行器中检查 AppImage 以及 DEB 解包启动。
+安装包包含应用运行时、渲染资源与 Pandoc。六种系统与架构组合均通过成品启动检查。[SHA-256 清单](https://github.com/peterwangze/sujian-markdown/releases/download/v1.0.0/SHA256SUMS.txt) · [构建与验证记录](https://github.com/peterwangze/sujian-markdown/actions/runs/42973566980)
 
-## 开始使用
+## 开发与兼容范围
 
-- 在侧栏打开本地文件夹，在文件树中切换文档，也可以从“大纲”跳到某个章节。
-- 即时模式只显示当前编辑位置需要的 Markdown 标记。源码模式适合审查空白、换行与长文档。
-- 有未保存改动时，素笺保存本地恢复草稿。重启后可以从侧栏恢复。磁盘文件另有改动时，冲突面板可显示磁盘版本并另存副本。
-- 从“文档与视图”打开导出、阅读和全屏。原生导出包括 PDF、HTML 与 PNG，其他文档格式使用随包的 Pandoc。
+使用 Node.js 24。
 
-## 开发与发布
+```sh
+npm ci
+npm run build
+npm start
+```
 
-需要 Node.js 24。运行 `npm ci`、`npm run build`、`npm start`。用 `npm test` 执行自动化回归。构建本机安装包时运行 `npm run package -- <win32|darwin|linux> <x64|arm64>`。安装包和 SHA-256 通过 GitHub Actions 在发行标签上生成。
+运行 `npm test` 执行自动化回归。使用 `npm run package -- win32 x64` 构建 Windows x64 离线安装包，也可指定 `darwin` 或 `linux` 和对应架构。
 
-[Typora 调研、功能对照与验收计划](docs/compatibility.md)
+素笺以 Typora 1.14.x 的公开功能为调研基线。传统编码、MathJax 扩展、多版本历史和部分系统集成仍有兼容差异。[功能对照与验收记录](docs/compatibility.md)
