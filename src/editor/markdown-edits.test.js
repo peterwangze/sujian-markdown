@@ -17,3 +17,12 @@ test('preserves line endings when editing on a line boundary', () => {
   assert.equal(projectMarkdownEdit('A\r\nB', 'A\nB', 'AB'), 'AB');
   assert.equal(projectMarkdownEdit('A', 'A\n', 'A\nB\n'), 'A\nB\n');
 });
+
+test('projects loose-list indentation after the preserved blank line', () => {
+  const raw = '# Heading  \n\n- parent\n\n- child word\n\n  second paragraph\n\nUnchanged *content*\n';
+  const before = raw.replace('Heading  ', 'Heading').replace('parent\n\n', 'parent\n');
+  const after = before.replace('parent\n- child', 'parent\n\n  - child').replace('  second', '    second');
+  const expected = raw.replace('- child', '  - child').replace('  second', '    second');
+  assert.equal(projectMarkdownEdit(raw, before, after), expected);
+  assert.equal(projectMarkdownEdit(raw.replaceAll('\n', '\r\n'), before, after), expected.replaceAll('\n', '\r\n'));
+});

@@ -47,6 +47,24 @@ function rawOffset(raw, ranges, offset, side) {
   return offset + adjustment;
 }
 
+function projectListIndent(raw, before, normalized, change) {
+  if (change.before !== change.endBefore || !/^(?:[-+*]|\d{1,9}[.)])[ \t]/.test(before.slice(change.before))) return null;
+  const indent = /^(\n*)([ \t]+)$/.exec(change.inserted);
+  if (!indent) return null;
+
+  // Lute can omit a blank line between loose items. Place the new indent after
+  // the original line break so it still applies to the marker on disk.
+  for (const range of normalized) {
+    if (range.after !== change.before || range.endAfter !== range.after) continue;
+    const removed = raw.slice(range.before, range.endBefore);
+    if (!/^(?:\r\n|\n|\r)+$/.test(removed)) return null;
+    const existing = removed.match(/\r\n|\n|\r/g).length;
+    const extra = '\n'.repeat(Math.max(0, indent[1].length - existing));
+    return { start: range.before, end: range.endBefore, text: removed + extra + indent[2] };
+  }
+  return null;
+}
+
 export function projectMarkdownEdit(raw, before, after) {
   if (before === after) return raw;
   if (before === raw) return after;
@@ -63,6 +81,12 @@ export function projectMarkdownEdit(raw, before, after) {
   let cursor = 0;
 
   for (const change of changes) {
+    const indent = projectListIndent(raw, before, normalized, change);
+    if (indent) {
+      result += raw.slice(cursor, indent.start) + indent.text;
+      cursor = indent.end;
+      continue;
+    }
     const start = rawOffset(raw, normalized, change.before, 'right');
     const end = Math.max(start, rawOffset(raw, normalized, change.endBefore, 'left'));
     const generatedEof = start === raw.length && normalized.find((range) =>

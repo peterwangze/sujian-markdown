@@ -72,7 +72,7 @@ export function useWorkspace(notify, beforeClose) {
     }))
   }, [configure])
 
-  const append = useCallback(docs => {
+  const append = useCallback((docs, activate = true) => {
     if (!docs.length) return
     commit(previous => {
       const items = [...previous.docs]
@@ -80,7 +80,7 @@ export function useWorkspace(notify, beforeClose) {
       for (const file of docs) {
         const existing = items.find(doc => doc.id === file.id || (file.path && fileKey(doc.path) === fileKey(file.path)))
         if (!existing) items.push(file)
-        activeId = existing?.id ?? file.id
+        if (activate || activeId === null) activeId = existing?.id ?? file.id
       }
       return { docs: items, activeId }
     })
@@ -98,16 +98,18 @@ export function useWorkspace(notify, beforeClose) {
     append(files.map(fromDisk))
   }, [append])
 
-  const openPath = useCallback(async path => {
-    const current = stateRef.current.docs.find(doc => doc.path && fileKey(doc.path) === fileKey(path))
+  const getDocumentByPath = useCallback(path => path && stateRef.current.docs.find(doc => doc.path && fileKey(doc.path) === fileKey(path)), [])
+
+  const openPath = useCallback(async (path, { activate = true } = {}) => {
+    const current = getDocumentByPath(path)
     if (current) {
-      select(current.id)
+      if (activate) select(current.id)
       return current
     }
     const doc = fromDisk(await desktop.openPath(path))
-    append([doc])
-    return stateRef.current.docs.find(item => fileKey(item.path) === fileKey(doc.path)) ?? doc
-  }, [append, select])
+    append([doc], activate)
+    return getDocumentByPath(doc.path) ?? doc
+  }, [append, getDocumentByPath, select])
 
   const getDocument = useCallback(id => stateRef.current.docs.find(doc => doc.id === id), [])
 
@@ -366,7 +368,7 @@ export function useWorkspace(notify, beforeClose) {
 
   return {
     docs: state.docs, active: state.docs.find(doc => doc.id === state.activeId), settings, ready, saving, recoverable,
-    select, configure, add, append, amend, close, reopen, openFiles, openPath, getDocument, replaceReviewedText, save, resolveConflict, recover,
+    select, configure, add, append, amend, close, reopen, openFiles, openPath, getDocument, getDocumentByPath, replaceReviewedText, save, resolveConflict, recover,
     removeRecovery: async id => { await discardDraft(id); setRecoverable(items => items.filter(item => item.id !== id)) },
   }
 }

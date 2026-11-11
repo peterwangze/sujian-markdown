@@ -1,0 +1,20 @@
+.context-menu.document-context-menu {
+  min-width: min(190px, calc(100vw - 12px));
+  max-width: calc(100vw - 12px);
+  max-height: calc(100dvh - 12px);
+}
+
+.document-context-name {
+  overflow: hidden;
+  margin: 3px 5px;
+  padding: 3px 4px;
+  color: var(--muted);
+  font-size: .78em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.document-context-menu button:focus-visible {
+  outline-offset: -2px;
+  background: var(--hover);
+}

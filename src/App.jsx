@@ -6,6 +6,7 @@ import { Sidebar } from './ui/Sidebar.jsx'
 import { Toolbar } from './ui/Toolbar.jsx'
 import { ExportDialog, FindBar, FolderSearch, GoToLine, QuickOpen, Recovery, Settings } from './ui/Dialogs.jsx'
 import { CommandPalette } from './ui/CommandPalette.jsx'
+import { DocumentContextMenu } from './ui/DocumentContextMenu.jsx'
 import { desktop, native } from './workspace/desktop.js'
 import { headings, localImageSources, MAX_LIVE_LENGTH, slug, updateImageSources, wordCount } from './workspace/text.js'
 import { isDirty, useWorkspace } from './workspace/useWorkspace.js'
@@ -18,6 +19,10 @@ import { applyTheme, resolveTheme } from './theme/themes.js'
 const ReviewDialog = lazy(() => import('./review/ReviewDialog.jsx'))
 
 const visualExports = new Set(['pdf', 'html', 'html-plain', 'png', 'docx', 'epub', 'print'])
+const fileActions = [
+  ['rename', '重命名'], ['move', '移动到…'], ['duplicate', '复制'], ['trash', '移到回收站'],
+  ['reveal', '在文件管理器中显示'], ['undo', '撤销文件操作'],
+]
 const leaf = path => path?.split(/[\\/]/).filter(Boolean).at(-1) ?? ''
 
 function resolveLink(base, href) {
@@ -66,13 +71,14 @@ export default function App() {
   const mode = active?.mode ?? settings.mode
   const reviewDoc = dialog?.type === 'review' ? docs.find(doc => doc.id === dialog.docId) : null
   const canUndoReview = !!active?.reviewUndo && active.text === active.reviewUndo.after
+  const contextDoc = context && (workspace.getDocument(context.item.id) ?? workspace.getDocumentByPath(context.item.path))
   const selectedTheme = resolveTheme(settings.theme, systemDark)
   const dark = selectedTheme.scheme === 'dark'
   const renderTheme = selectedTheme.id
   const activeFonts = fonts.imported.filter(font => !fonts.unavailable.includes(font.id))
   const fontsCss = `:root{--sans:${fontStack('uiFont', settings.uiFont, activeFonts)};` +
     `--serif:${fontStack('bodyFont', settings.bodyFont, activeFonts)};--mono:${fontStack('sourceFont', settings.sourceFont, activeFonts)}}`
-  const modalOpen = !!dialog
+  const modalOpen = !!dialog || !!context
   const commandContext = useRef(null)
   commandContext.current = { active, mode, settings, native, canUndoReview, tabCount: docs.length }
   const deferredText = useDeferredValue(active?.text ?? '')
@@ -86,6 +92,8 @@ export default function App() {
       setDialog(previous => previous === dialog ? null : previous)
     }
   }, [active?.id, dialog, reviewDoc])
+
+  useEffect(() => { if (dialog) setContext(null) }, [dialog])
 
   useEffect(() => {
     const media = matchMedia('(prefers-color-scheme: dark)')
@@ -141,6 +149,16 @@ export default function App() {
     const value = active?.id === id ? flushEditor() : doc?.text
     if (doc && value !== doc.savedText) setDialog({ type: 'close', id, name: doc.name })
     else run(() => workspace.close(id))
+  }
+
+  function selectDocument(id) {
+    flushEditor()
+    workspace.select(id)
+  }
+
+  function openDocumentPath(path) {
+    flushEditor()
+    return workspace.openPath(path)
   }
 
   const resolveImage = useCallback(source => {
@@ -277,17 +295,18 @@ export default function App() {
     })
     if (changed) {
       setDialog(previous => previous?.requestId === dialog.requestId ? null : previous)
-      notify('已采纳修订。可在「文档与视图」撤销本次审阅。')
+      notify(activeId.current === dialog.docId ? '已采纳修订。可在「文档与视图」撤销本次审阅。' :
+        '已采纳「' + reviewDoc.name + '」的修订。可在该文档的右键菜单撤销。')
     }
     return changed
   }
 
-  function undoReview() {
-    if (!active?.reviewUndo) return
-    flushEditor()
-    const { before, after } = active.reviewUndo
+  function undoReview(doc = active) {
+    if (!doc?.reviewUndo) return
+    if (activeId.current === doc.id) flushEditor()
+    const { before, after } = doc.reviewUndo
     run(async () => {
-      await workspace.replaceReviewedText(active.id, { expectedText: after, expectedPath: active.path, text: before, undo: true })
+      await workspace.replaceReviewedText(doc.id, { expectedText: after, expectedPath: doc.path, text: before, undo: true })
       notify('已撤销本次审阅')
     })
   }
@@ -456,25 +475,102 @@ export default function App() {
     return () => document.removeEventListener('keydown', shortcut, true)
   }, [settings.hotkeys, modalOpen])
 
-  useEffect(() => {
-    if (!context) return
-    const dismiss = () => setContext(null)
-    document.addEventListener('pointerdown', dismiss)
-    document.addEventListener('keydown', dismiss)
-    return () => {
-      document.removeEventListener('pointerdown', dismiss)
-      document.removeEventListener('keydown', dismiss)
+  function openContext(event, item, origin = event.currentTarget) {
+    event.preventDefault()
+    event.stopPropagation()
+    const anchor = origin.getBoundingClientRect()
+    const keyboard = event.type === 'keydown' || (event.clientX === 0 && event.clientY === 0)
+    const position = item.detail?.position
+    setContext({ item, origin, x: keyboard ? position?.x ?? anchor.left : event.clientX,
+      y: keyboard ? position?.y ?? anchor.bottom : event.clientY })
+  }
+
+  function openEditorContext(event, detail) {
+    if (!active) return
+    const origin = event.target.closest?.('.cm-content, .editor-live [contenteditable="true"], .editor-preview [tabindex]') ?? event.currentTarget
+    openContext(event, { kind: 'editor', id: active.id, name: active.name, path: active.path, detail }, origin)
+  }
+
+  const dismissContext = useCallback((restoreFocus, restoreSelection = false) => {
+    setContext(null)
+    if (!restoreFocus) return
+    if (restoreSelection && context?.item.kind === 'editor' && activeId.current === context.item.id) {
+      run(() => editor.current?.contextCommand?.('restore-focus'))
+    } else context?.origin?.focus({ preventScroll: true })
+  }, [context, run])
+
+  function contextGroups(item) {
+    if (item.kind === 'directory') return [[['mkdir', '新建子文件夹'],
+      settings.pinned.includes(item.path) ? ['unpin', '取消固定'] : ['pin', '固定文件夹']], fileActions]
+    const documentActions = [['review', '审阅修订稿']]
+    if (contextDoc?.reviewUndo && contextDoc.text === contextDoc.reviewUndo.after) documentActions.push(['undo-review', '撤销本次审阅'])
+    if (item.kind === 'editor') {
+      const { editable, selection, kind, href, canPaste, language, header, columnCount, spelling } = item.detail
+      const spellingActions = spelling ? [
+        ...spelling.suggestions.slice(0, 5).map((word, index) => ['spelling-' + index, word]),
+        ['add-to-dictionary', '添加到词典'],
+      ] : []
+      const editActions = []
+      if (selection) {
+        if (editable) editActions.push(['cut', '剪切'])
+        editActions.push(['copy', '复制'])
+        if (editable && kind !== 'code') editActions.push(['bold', '加粗'], ['italic', '斜体'])
+      }
+      if (editable && canPaste) {
+        editActions.push(['paste', '粘贴'])
+        if (kind !== 'code') editActions.push(['paste-plain', '粘贴为纯文本'])
+      }
+      if (editable) editActions.push(['undo', '撤销'], ['redo', '重做'])
+      editActions.push(['select-all', '全选'])
+      const blockActions = []
+      if (kind === 'code') {
+        blockActions.push(['copy-code', '复制代码'])
+        if (editable && language !== undefined) blockActions.push(['code-language', '代码语言…'])
+      }
+      if (kind === 'link' && href) blockActions.push(['open-link', '打开链接'], ['copy-link', '复制链接地址'])
+      if (kind === 'table' && editable) {
+        if (!header) blockActions.push(['table-row-above', '上方插入行'])
+        blockActions.push(['table-row-below', '下方插入行'], ['table-column-left', '左侧插入列'], ['table-column-right', '右侧插入列'])
+        if (!header) blockActions.push(['table-delete-row', '删除行'])
+        if (columnCount !== 1) blockActions.push(['table-delete-column', '删除列'])
+      }
+      return [spellingActions, blockActions, editActions, documentActions].filter(group => group.length)
     }
-  }, [context])
+    documentActions.push(['open-document', '打开文档'])
+    if (contextDoc) documentActions.push(['save-document', '保存'], ['close-document', '关闭标签'])
+    return native && item.path ? [documentActions, fileActions] : [documentActions]
+  }
 
   function contextAction(key) {
     const item = context.item
-    setContext(null)
+    const doc = workspace.getDocument(item.id) ?? workspace.getDocumentByPath(item.path)
+    dismissContext(true)
+    if (key === 'review') {
+      if (doc) openReview(doc)
+      else if (item.path) run(async () => openReview(await workspace.openPath(item.path, { activate: false })))
+    }
+    if (key === 'undo-review' && doc) undoReview(doc)
+    if (item.kind === 'editor') {
+      if (activeId.current !== item.id || key === 'review' || key === 'undo-review') return
+      if (key === 'copy-link') run(() => desktop.writeClipboard({ text: item.detail.href }))
+      else run(() => editor.current?.contextCommand?.(key))
+      return
+    }
+    if (key === 'open-document') {
+      if (doc) selectDocument(doc.id)
+      else if (item.path) run(() => openDocumentPath(item.path))
+    }
+    if (key === 'save-document' && doc) {
+      if (activeId.current === doc.id) flushEditor()
+      run(() => workspace.save(doc.id))
+    }
+    if (key === 'close-document' && doc) closeTab(doc.id)
     if (key === 'rename' || key === 'trash' || key === 'mkdir' || key === 'move') setDialog({ type: key, item })
-    if (key === 'open') run(() => desktop.showItemInFolder(item.path))
+    if (key === 'reveal') run(() => desktop.showItemInFolder(item.path))
     if (key === 'duplicate') run(async () => { await desktop.duplicatePath(item.path); setRefresh(previous => previous + 1) })
     if (key === 'undo') run(async () => { await desktop.undoFileOperation(); setRefresh(previous => previous + 1) })
     if (key === 'pin' && !settings.pinned.includes(item.path)) configure({ pinned: [...settings.pinned, item.path] })
+    if (key === 'unpin') configure({ pinned: settings.pinned.filter(path => path !== item.path) })
   }
 
   function submitPath(key, value) {
@@ -507,15 +603,13 @@ export default function App() {
     <div className="workbench">
       {settings.sidebar && <Sidebar workspace={workspace} sidebar={sidebar} setSidebar={setSidebar} outline={outline}
         jump={jump} openFolder={openFolder} searchFolder={() => action('search-folder')} refresh={refresh} notify={notify}
-        openRecovery={() => setDialog({ type: 'recovery' })} onContext={(event, item) => {
-          event.preventDefault()
-          setContext({ x: Math.min(event.clientX, innerWidth - 180), y: Math.min(event.clientY, innerHeight - 270), item })
-        }}/>}
+        openRecovery={() => setDialog({ type: 'recovery' })} onContext={openContext}
+        onOpenPath={openDocumentPath} onSelectDocument={selectDocument}/>}
       <main className="work-area" onDragOver={event => {
         if ([...event.dataTransfer.types].includes('Files')) event.preventDefault()
       }} onDrop={openDroppedFiles}>
         <div className="topline">
-          <TabStrip docs={docs} active={active} isDirty={isDirty} onSelect={id => { flushEditor(); workspace.select(id) }}
+          <TabStrip docs={docs} active={active} isDirty={isDirty} onSelect={selectDocument} onContext={openContext}
             onClose={closeTab} onNew={() => action('new-file')} plus={Plus}/>
           <Toolbar active={active} mode={mode} setMode={setMode} action={action} command={command} settings={settings} native={native} platform={desktop.platform}
             canUndoReview={canUndoReview}/>
@@ -531,6 +625,7 @@ export default function App() {
           <div id="write" className="editor-frame" role="tabpanel" aria-labelledby={'doc-tab-' + active.id}>
             <Editor docId={active.id} value={active.text} mode={mode} editorRef={editor}
               onChange={text => amend(active.id, { text })} onSelection={setSelection} onLink={followLink} onImage={insertImages}
+              onContextMenu={openEditorContext}
               assetUrl={assetUrl} resolveImage={resolveImage} theme={renderTheme}
               wrap={settings.wrap} allowRemoteMedia={settings.remoteMedia}
               focusMode={settings.focusMode} typewriter={settings.typewriter} spellcheck={settings.spellcheck}/>
@@ -654,11 +749,7 @@ export default function App() {
         <footer><button type="button" onClick={closeDialog}>取消</button><button type="submit" className="primary">插入</button></footer>
       </form>
     </Modal>}
-    {context && <div className="context-menu tool-menu-list" style={{ left: context.x, top: context.y }} onPointerDown={event => event.stopPropagation()}>
-      {(context.item.kind === 'directory' ? [['mkdir','新建子文件夹'],['pin','固定文件夹']] : []).concat([
-        ['rename','重命名'], ['move','移动到…'], ['duplicate','复制'], ['trash','移到回收站'], ['open','在文件管理器中显示'], ['undo','撤销文件操作'],
-      ]).map(([key, name]) => <button key={key} onClick={() => contextAction(key)}>{name}</button>)}
-    </div>}
+    {context && <DocumentContextMenu context={context} groups={contextGroups(context.item)} onAction={contextAction} onDismiss={dismissContext}/>}
     {['rename', 'move', 'mkdir'].includes(dialog?.type) && <Modal title={{ rename: '重命名', move: '移动到文件夹', mkdir: '新建子文件夹' }[dialog.type]} onClose={closeDialog}>
       <form onSubmit={event => { event.preventDefault(); submitPath(dialog.type, new FormData(event.currentTarget).get('name')) }}>
         <label className="text-setting">{dialog.type === 'move' ? '目标文件夹的完整路径' : '名称'}

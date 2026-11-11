@@ -1,4 +1,4 @@
-const { contextBridge, ipcRenderer, webUtils } = require('electron');
+const { contextBridge, ipcRenderer, webFrame, webUtils } = require('electron');
 
 const invoke = (channel) => (...args) => ipcRenderer.invoke(`sujian:${channel}`, ...args);
 const subscribe = (channel) => (callback) => {
@@ -70,6 +70,9 @@ contextBridge.exposeInMainWorld('sujian', {
   assetUrl,
   filePath: (file) => webUtils.getPathForFile(file),
   writeClipboard: invoke('write-clipboard'),
+  editClipboard: invoke('edit-clipboard'),
+  spellingSuggestions: word => webFrame.isWordMisspelled(word) ? webFrame.getWordSuggestions(word) : null,
+  addSpellingWord: invoke('add-spelling-word'),
   openExternal: invoke('open-external'),
   showItemInFolder: invoke('show-item-in-folder'),
   newWindow: invoke('new-window'),

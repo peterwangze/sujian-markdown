@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { X, FileText } from 'lucide-react'
 import { isComposingKey } from '../workspace/commands.js'
+import { documentContextEvents } from './DocumentContextMenu.jsx'
 
 export function IconButton({ icon: Icon, label, pressed, className = '', children, ...props }) {
   return <button className={'icon-button ' + className} type="button" title={label} aria-label={label} aria-pressed={pressed} {...props}>
@@ -26,7 +27,7 @@ export function Modal({ title, children, onClose, className = '', initialFocusRe
   </dialog>
 }
 
-export function TabStrip({ docs, active, isDirty, onSelect, onClose, onNew, plus: Plus }) {
+export function TabStrip({ docs, active, isDirty, onSelect, onClose, onNew, onContext, plus: Plus }) {
   const ref = useRef(null)
   const addTab = useRef(null)
   const pendingClose = useRef(null)
@@ -90,6 +91,7 @@ export function TabStrip({ docs, active, isDirty, onSelect, onClose, onNew, plus
       {docs.map(doc => <div className={'tab ' + (active?.id === doc.id ? 'active' : '')} key={doc.id} role="presentation">
         <button type="button" role="tab" id={'doc-tab-' + doc.id} tabIndex={tabbable === doc.id ? 0 : -1}
           aria-selected={active?.id === doc.id} aria-controls={active?.id === doc.id ? 'write' : undefined} title={doc.path || doc.name}
+          {...documentContextEvents({ kind: 'file', id: doc.id, path: doc.path, name: doc.name }, onContext)}
           onFocus={() => setFocusedTab(doc.id)}
           onClick={() => onSelect(doc.id)} onAuxClick={event => { if (event.button === 1) onClose(doc.id) }}>
           <FileText size={14} /><span>{doc.name}</span>{isDirty(doc) && <i title="有未保存的改动" />}

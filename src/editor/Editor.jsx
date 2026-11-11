@@ -1,7 +1,7 @@
 import { useEffect, useImperativeHandle, useLayoutEffect, useRef, useState } from 'react';
 import { Annotation, Compartment, EditorSelection, EditorState, Transaction } from '@codemirror/state';
 import { EditorView, drawSelection, dropCursor, highlightActiveLine, keymap } from '@codemirror/view';
-import { defaultKeymap, history, historyKeymap, indentWithTab, redo, undo } from '@codemirror/commands';
+import { defaultKeymap, history, historyKeymap, redo, undo } from '@codemirror/commands';
 import { HighlightStyle, syntaxHighlighting } from '@codemirror/language';
 import { markdown } from '@codemirror/lang-markdown';
 import { tags } from '@lezer/highlight';
@@ -9,9 +9,14 @@ import Vditor from 'vditor';
 import 'vditor/dist/index.css';
 import { resolveTheme } from '../theme/themes.js';
 import { isComposingKey } from '../workspace/commands.js';
+import { desktop } from '../workspace/desktop.js';
+import { changeFenceLanguage, CodeLanguageControl, codeFenceAt } from './CodeLanguageControl.jsx';
+import { domContext, restoreEditorContext, sourceContext, spellingAt } from './editor-context.js';
 import { formatMarkdown } from './format.js';
 import { matchMarkdown, projectMarkdownEdit, replacementText } from './markdown-edits.js';
 import { handleRichCodeKeys } from './rich-code-keys.js';
+import { handleRichListKeys } from './rich-list-keys.js';
+import { handleRichParagraphKeys } from './rich-paragraph-keys.js';
 import { sourceKeys } from './source-keys.js';
 import { isLocalImage, loadVendorScript, markdownOptions, renderLegacyDiagram, renderPreview, vendorRoot } from './render-document.js';
 import './editor.css';
@@ -42,13 +47,19 @@ const tableActions = [
   ['deleteRow', '删行', '-'], ['deleteColumn', '删列', '-', true],
   ['alignLeft', '左对齐', 'l', true], ['alignCenter', '居中', 'c', true], ['alignRight', '右对齐', 'r', true],
 ];
+const tableContextActions = {
+  'table-row-above': tableActions[0], 'table-row-below': tableActions[1],
+  'table-column-left': tableActions[2], 'table-column-right': tableActions[3],
+  'table-delete-row': tableActions[4], 'table-delete-column': tableActions[5],
+};
+const pasteActions = { paste: 'paste', 'paste-plain': 'pasteAndMatchStyle' };
 
 function sourceExtensions(onUpdate, latest, wrapping) {
   return [
     markdown({ addKeymap: false }), sourceKeys, syntaxHighlighting(sourceSyntax), sourceAppearance,
     history(), drawSelection(), dropCursor(), highlightActiveLine(),
     wrapping.of(latest.current.wrap ? EditorView.lineWrapping : []),
-    keymap.of([indentWithTab, ...defaultKeymap, ...historyKeymap]),
+    keymap.of([...defaultKeymap, ...historyKeymap]),
     EditorView.contentAttributes.of({
       'aria-label': 'Markdown 源码', 'aria-description': '先按 Escape，再按 Tab 或 Shift+Tab 可移出编辑区。',
     }),
@@ -181,6 +192,7 @@ function updateUnderlines(root) {
 export function Editor({
   docId, value = '', mode = 'live', onChange, onSelection, onLink, onImage, resolveImage,
   assetUrl, focusMode = false, typewriter = false, spellcheck = false, wrap = true, allowRemoteMedia = true, theme = 'light', editorRef,
+  onContextMenu,
 }) {
   const richHost = useRef(null);
   const sourceHost = useRef(null);
@@ -196,7 +208,11 @@ export function Editor({
   const lastFind = useRef(null);
   const activeBlock = useRef(null);
   const activeCell = useRef(null);
+  const editorContext = useRef(null);
   const [tableSelection, setTableSelection] = useState(null);
+  const [activeFence, setActiveFence] = useState(null);
+  const [hoveredFence, setHoveredFence] = useState(null);
+  const [languageRequest, setLanguageRequest] = useState(null);
   const [richMounted, setRichMounted] = useState(mode === 'live');
   const [richError, setRichError] = useState('');
   const [previewError, setPreviewError] = useState('');
@@ -357,6 +373,8 @@ export function Editor({
         return;
       }
       if (handleRichCodeKeys(event, editable)) return;
+      if (handleRichListKeys(event, editable, instance.vditor)) return;
+      if (handleRichParagraphKeys(event, editable)) return;
       const addWithEnter = event.key === 'Enter' && !event.shiftKey && !event.altKey &&
         (/Mac/i.test(navigator.platform) ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey);
       const forwardTab = event.key === 'Tab' && !modified && !event.shiftKey;
@@ -385,6 +403,7 @@ export function Editor({
       const anchor = window.getSelection()?.anchorNode;
       if (!anchor || !host.contains(anchor)) {
         if (activeCell.current) selectCell(null);
+        setActiveFence(null);
         return;
       }
       const element = anchor.nodeType === Node.ELEMENT_NODE ? anchor : anchor.parentElement;
@@ -398,6 +417,7 @@ export function Editor({
       }
       const cell = element?.closest('td, th') ?? null;
       if (cell || activeCell.current) selectCell(cell);
+      setActiveFence(codeFenceAt(element));
       const block = element?.closest('[data-block="0"]');
       if (block !== activeBlock.current) {
         activeBlock.current?.removeAttribute('data-sujian-active');
@@ -508,6 +528,10 @@ export function Editor({
       imageCache.current.clear();
       lastFind.current = null;
       selectCell(null);
+      editorContext.current = null;
+      setActiveFence(null);
+      setHoveredFence(null);
+      setLanguageRequest(null);
       latest.current.onSelection?.('');
     }
 
@@ -709,7 +733,7 @@ export function Editor({
   }
 
   useImperativeHandle(editorRef, () => ({
-    command, find, replace, jump,
+    command, find, replace, jump, contextCommand,
     focus: () => {
       if (latest.current.mode === 'live') rich.current?.focus();
       else if (latest.current.mode === 'read') previewHost.current?.focus();
@@ -737,15 +761,103 @@ export function Editor({
     const href = link.getAttribute('href');
     if (!href) return;
     event.preventDefault();
+    openHref(href, link.closest('.editor-preview, .editor-live'));
+  }
+
+  function openHref(href, pane) {
     if (href.startsWith('#')) {
       const name = href.slice(1);
       let anchor = name;
       try { anchor = decodeURIComponent(name); } catch { /* malformed URL */ }
-      const pane = link.closest('.editor-preview, .editor-live');
       pane?.querySelector(`[id="${CSS.escape(anchor)}"], [data-id="${CSS.escape(anchor)}"]`)?.scrollIntoView({ block: 'start' });
       return;
     }
     latest.current.onLink?.(href);
+  }
+
+  function showEditorContext(event) {
+    if (!onContextMenu || event.defaultPrevented) return;
+    const keyboard = event.type === 'keydown' || (!event.clientX && !event.clientY);
+    const editable = rich.current?.vditor.ir.element;
+    let context;
+    if (mode === 'live' && editable?.contains(event.target)) context = domContext(event, editable, true, keyboard);
+    else if (mode !== 'live' && event.target.closest?.('.editor-preview') && previewHost.current) {
+      context = domContext(event, previewHost.current, false, keyboard);
+    } else if ((mode === 'source' || mode === 'split') && sourceHost.current?.contains(event.target) && source.current) {
+      context = sourceContext(event, source.current, keyboard);
+    }
+    if (!context) return;
+
+    const spelling = mode === 'live' && spellcheck && context.kind === 'text'
+      ? spellingAt(context.range, desktop.spellingSuggestions) : null;
+    editorContext.current = { ...context, mode, docId, spelling };
+    onContextMenu(event, {
+      selection: context.selection, editable: context.editable, mode, kind: context.kind,
+      href: context.href, position: context.position,
+      canPaste: context.editable && Boolean(desktop.editClipboard || navigator.clipboard?.readText),
+      language: context.editable && context.block ? context.block.querySelector('[data-type="code-block-info"]')?.textContent : undefined,
+      header: context.cell?.tagName === 'TH', columnCount: context.cell?.parentElement.cells.length,
+      spelling: spelling && { word: spelling.word, suggestions: spelling.suggestions },
+    });
+  }
+
+  function contextCommand(id) {
+    const context = editorContext.current;
+    if (!context || context.docId !== content.current.id || context.mode !== latest.current.mode) return false;
+    if (id === 'copy-code' && context.codeText !== undefined) return desktop.writeClipboard({ text: context.codeText });
+    if (id === 'copy-link' && context.href) return desktop.writeClipboard({ text: context.href });
+    if (id === 'open-link' && context.href) return openHref(context.href, context.root?.closest('.editor-preview, .editor-live'));
+    if (!restoreEditorContext(context)) return false;
+    if (id === 'restore-focus') return true;
+    if (id === 'select-all') {
+      if (context.view) context.view.dispatch({ selection: { anchor: 0, head: context.doc.length } });
+      else context.root.ownerDocument.getSelection().selectAllChildren(context.root);
+      return true;
+    }
+    if (id === 'copy' || id === 'cut') return copyContextSelection(context, id === 'cut');
+    if (!context.editable) return false;
+    if (id === 'add-to-dictionary' && context.spelling) return desktop.addSpellingWord(context.spelling.word);
+    if (id.startsWith('spelling-') && context.spelling) {
+      const { range, suggestions, word } = context.spelling;
+      const replacement = suggestions[Number(id.slice('spelling-'.length))];
+      if (!replacement || !context.root.contains(range.startContainer) || range.toString() !== word) return false;
+      const selection = context.root.ownerDocument.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
+      return document.execCommand('insertText', false, replacement);
+    }
+    if (id === 'code-language' && context.block?.isConnected) {
+      setLanguageRequest({ block: context.block });
+      return true;
+    }
+    if (tableContextActions[id] && context.cell?.isConnected) return tableCommand(tableContextActions[id], context.cell);
+    if (['bold', 'italic', 'undo', 'redo'].includes(id)) return command(id);
+    if (!Object.hasOwn(pasteActions, id)) return false;
+    if (desktop.editClipboard) return desktop.editClipboard(pasteActions[id]);
+    return navigator.clipboard.readText().then(text => {
+      if (context.docId === content.current.id && context.mode === latest.current.mode && restoreEditorContext(context)) {
+        document.execCommand('insertText', false, text);
+      }
+    });
+  }
+
+  async function copyContextSelection(context, cut) {
+    if (!context.selection || (cut && !context.editable)) return false;
+    const raw = content.current.raw;
+    const selection = context.view ? context.sourceSelection.main : context.range;
+    const visible = context.view ? context.doc.sliceString(selection.from, selection.to) : selection.toString();
+    let text = visible;
+    if (context.editable && !context.view && rich.current) {
+      const container = document.createElement('div');
+      container.append(selection.cloneContents());
+      text = rich.current.vditor.lute.VditorIRDOM2Md(container.innerHTML).trimEnd() || visible;
+    }
+    await desktop.writeClipboard({ text });
+    if (!cut || editorContext.current !== context || context.docId !== content.current.id || context.mode !== latest.current.mode ||
+        content.current.raw !== raw || !restoreEditorContext(context)) return true;
+    if (context.view) context.view.dispatch({ ...context.view.state.replaceSelection(''), userEvent: 'delete.cut' });
+    else document.execCommand('delete');
+    return true;
   }
 
   function handleFiles(event) {
@@ -758,9 +870,24 @@ export function Editor({
 
   return (
     <div className={`editor-surface editor-mode-${mode}${focusMode ? ' editor-focus-mode' : ''}${typewriter ? ' editor-typewriter' : ''}`}
-      onClickCapture={handleLink} onPasteCapture={handleFiles} onDropCapture={handleFiles}>
-      <div className="editor-live" hidden={mode !== 'live'}>
+      onClickCapture={handleLink} onPasteCapture={handleFiles} onDropCapture={handleFiles}
+      onContextMenu={showEditorContext} onKeyDown={event => {
+        if (!isComposingKey(event.nativeEvent) && !event.ctrlKey && !event.metaKey && !event.altKey &&
+          (event.key === 'ContextMenu' || event.shiftKey && event.key === 'F10')) showEditorContext(event);
+      }}>
+      <div className="editor-live" hidden={mode !== 'live'} onPointerMove={event => {
+        if (!event.target.closest('.editor-code-language')) setHoveredFence(codeFenceAt(event.target));
+      }} onPointerLeave={() => setHoveredFence(null)}>
         <div className="editor-rich-host" ref={richHost} />
+        {mode === 'live' && <CodeLanguageControl key={docId}
+          target={hoveredFence?.isConnected ? hoveredFence : activeFence}
+          request={languageRequest}
+          onChange={(block, language) => {
+            const editable = rich.current?.vditor.ir.element;
+            if (!editable || !changeFenceLanguage(editable, block, language)) return false;
+            commitRich();
+            return true;
+          }}/>}
         {tableSelection && <div className="editor-table-toolbar" role="toolbar" aria-label="表格编辑">
           {tableActions.map((entry) => {
             const [action, label] = entry;
@@ -773,7 +900,7 @@ export function Editor({
       </div>
       <div className="editor-source" hidden={mode !== 'source' && mode !== 'split'} ref={sourceHost} />
       <div className="editor-preview" hidden={mode !== 'split' && mode !== 'read'}>
-        <div ref={previewHost} tabIndex={mode === 'read' ? 0 : undefined} />
+        <div ref={previewHost} tabIndex={mode === 'read' ? 0 : -1} />
         {previewError && <div role="alert" className="editor-error">{previewError}</div>}
       </div>
     </div>

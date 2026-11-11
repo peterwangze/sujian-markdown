@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, clipboard, dialog, ipcMain, net, protocol, session, shell } = require('electron');
+const { app, BrowserWindow, ClipboardItem, Menu, clipboard, dialog, ipcMain, net, protocol, session, shell } = require('electron');
 const fs = require('node:fs/promises');
 const { existsSync, mkdtempSync } = require('node:fs');
 const path = require('node:path');
@@ -398,8 +398,18 @@ function installIpc({ assets, conversion, fonts, storage, operations }) {
   handle('show-item-in-folder', (_state, filePath) => shell.showItemInFolder(path.resolve(filePath)));
   handle('write-clipboard', (_state, data) => {
     const allowed = {};
-    for (const type of ['text', 'html', 'rtf']) if (typeof data[type] === 'string') allowed[type] = data[type];
-    clipboard.write(allowed);
+    for (const [type, mime] of [['text', 'text/plain'], ['html', 'text/html'], ['rtf', 'text/rtf']]) {
+      if (typeof data?.[type] === 'string') allowed[mime] = data[type];
+    }
+    if (Object.keys(allowed).length) return clipboard.write([new ClipboardItem(allowed)]);
+  });
+  handle('edit-clipboard', ({ window }, action) => {
+    if (action !== 'paste' && action !== 'pasteAndMatchStyle') throw new Error('不支持的剪贴板操作。');
+    window.webContents[action]();
+  });
+  handle('add-spelling-word', ({ window }, word) => {
+    if (typeof word !== 'string' || !word || word.length > 64 || /\s/u.test(word)) return false;
+    return window.webContents.session.addWordToSpellCheckerDictionary(word);
   });
   handle('new-window', async (_state, filePath) => { await createWindow(filePath ? [filePath] : []); });
   handle('set-fullscreen', ({ window }, enabled) => { window.setFullScreen(Boolean(enabled)); });

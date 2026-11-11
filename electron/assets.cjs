@@ -103,10 +103,12 @@ function createAssets({ userDataPath, knownDocuments }) {
     if (documentPath && !knownDocuments.has(pathKey(documentPath))) throw new Error('Open or save the document before attaching local media.');
     let content = bytes ? Buffer.from(bytes) : null;
     if (useClipboard && !content) {
-      const image = clipboard.readImage();
-      if (image.isEmpty()) return null;
-      content = image.toPNG();
-      filename ??= 'clipboard.png';
+      const items = await clipboard.read();
+      const mime = ['image/png', 'image/jpeg', 'image/webp'].find(type => items.some(item => item.types.includes(type)));
+      if (!mime) return null;
+      const image = await items.find(item => item.types.includes(mime)).getType(mime);
+      content = Buffer.from(await image.arrayBuffer());
+      filename ??= 'clipboard.' + mime.slice('image/'.length);
     }
     if (!content && !sourcePath) {
       const extensions = [...types.keys()].filter((extension) => types.get(extension).startsWith('image/')).map((extension) => extension.slice(1));

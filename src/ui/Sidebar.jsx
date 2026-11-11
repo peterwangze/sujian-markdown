@@ -3,6 +3,7 @@ import { ChevronDown, ChevronRight, FileText, Folder, FolderOpen, List, FolderSe
 import { desktop, native } from '../workspace/desktop.js'
 import { isComposingKey } from '../workspace/commands.js'
 import { IconButton } from './Controls.jsx'
+import { documentContextEvents } from './DocumentContextMenu.jsx'
 
 function pathTail(path) { return path?.split(/[\\/]/).filter(Boolean).at(-1) ?? '' }
 
@@ -68,7 +69,7 @@ function FileTree({ path, level, expanded, settings, refresh, active, onOpen, on
         data-sidebar-row data-level={level + 1} title={item.path} aria-expanded={directory ? open : undefined}
         aria-current={active?.path === item.path ? 'true' : undefined}
         onClick={() => directory ? setChildren(previous => ({ ...previous, [item.path]: !open })) : onOpen(item.path).catch(failure => notify(failure.message, true))}
-        onContextMenu={event => onContext(event, item)}>
+        {...documentContextEvents(item, onContext)}>
         {directory && (open ? <ChevronDown size={13}/> : <ChevronRight size={13}/>)}
         {directory ? <Folder size={16}/> : <FileText size={15}/>}<span>{item.name}</span>
       </button>
@@ -78,8 +79,9 @@ function FileTree({ path, level, expanded, settings, refresh, active, onOpen, on
   })
 }
 
-export function Sidebar({ workspace, sidebar, setSidebar, outline, jump, openFolder, searchFolder, refresh, notify, onContext, openRecovery }) {
-  const { active, docs, settings, select, openPath, configure, recoverable } = workspace
+export function Sidebar({ workspace, sidebar, setSidebar, outline, jump, openFolder, searchFolder, refresh, notify,
+  onContext, onOpenPath, onSelectDocument, openRecovery }) {
+  const { active, docs, settings, configure, recoverable } = workspace
   const [rootOpen, setRootOpen] = useState(true)
   const [collapsed, setCollapsed] = useState(new Set())
   useEffect(() => { setRootOpen(true) }, [settings.workspace])
@@ -118,7 +120,7 @@ export function Sidebar({ workspace, sidebar, setSidebar, outline, jump, openFol
       ) : <>
         <div className="tree-root">
           <button className="tree-row" data-sidebar-row data-level="0" aria-expanded={rootOpen} onClick={() => setRootOpen(!rootOpen)}
-            onContextMenu={settings.workspace ? event => onContext(event, { path: settings.workspace, name: pathTail(settings.workspace), kind: 'directory' }) : undefined}>
+            {...documentContextEvents({ path: settings.workspace, name: pathTail(settings.workspace), kind: 'directory' }, settings.workspace ? onContext : null)}>
             {rootOpen ? <ChevronDown size={14}/> : <ChevronRight size={14}/>}<FolderOpen size={17}/><span>{pathTail(settings.workspace) || '工作区'}</span>
           </button>
           {settings.workspace && <>
@@ -129,21 +131,26 @@ export function Sidebar({ workspace, sidebar, setSidebar, outline, jump, openFol
           </>}
         </div>
         {settings.workspace ? <FileTree path={settings.workspace} level={0} expanded={rootOpen} settings={settings}
-          refresh={refresh} active={active} onOpen={openPath} onContext={onContext} notify={notify}/> :
+          refresh={refresh} active={active} onOpen={onOpenPath} onContext={onContext} notify={notify}/> :
           rootOpen && docs.map(doc => <button key={doc.id} className={'tree-row ' + (doc.id === active?.id ? 'selected' : '')}
             data-sidebar-row data-level="1" aria-current={doc.id === active?.id ? 'true' : undefined}
-            style={{ '--indent': 1 }} onClick={() => select(doc.id)} title={doc.path || doc.name}><FileText size={15}/><span>{doc.name}</span></button>)}
+            style={{ '--indent': 1 }} onClick={() => onSelectDocument(doc.id)} title={doc.path || doc.name}
+            {...documentContextEvents({ kind: 'file', id: doc.id, path: doc.path, name: doc.name }, onContext)}>
+            <FileText size={15}/><span>{doc.name}</span>
+          </button>)}
         {settings.pinned.length > 0 && <section className="sidebar-section">
           <h3>固定文件夹</h3>
           {settings.pinned.map(path => <div className="sidebar-split-row" key={path}>
-            <button className="tree-row" data-sidebar-row title={path} onClick={() => configure({ workspace: path })}><Pin size={14}/><span>{pathTail(path)}</span></button>
+            <button className="tree-row" data-sidebar-row title={path} onClick={() => configure({ workspace: path })}
+              {...documentContextEvents({ kind: 'directory', path, name: pathTail(path) }, onContext)}><Pin size={14}/><span>{pathTail(path)}</span></button>
             <IconButton icon={MoreHorizontal} label="取消固定" onClick={() => configure({ pinned: settings.pinned.filter(item => item !== path) })}/>
           </div>)}
         </section>}
         {settings.recent.length > 0 && <section className="sidebar-section">
           <h3>最近打开</h3>
           {settings.recent.slice(0, 8).map(path => <button key={path} className="tree-row" data-sidebar-row title={path}
-            onClick={() => openPath(path).catch(failure => notify(failure.message, true))}><FileText size={15}/><span>{pathTail(path)}</span></button>)}
+            onClick={() => onOpenPath(path).catch(failure => notify(failure.message, true))}
+            {...documentContextEvents({ kind: 'file', path, name: pathTail(path) }, onContext)}><FileText size={15}/><span>{pathTail(path)}</span></button>)}
         </section>}
       </>}
     </div>

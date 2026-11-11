@@ -1,0 +1,40 @@
+.code-language-picker {
+  width: min(21rem, calc(100vw - 28px));
+  max-width: 100%;
+  padding: 6px;
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  box-shadow: var(--shadow);
+}
+.code-language-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 1px 3px 6px 6px;
+  color: var(--muted);
+}
+.code-language-search input { flex: 1; min-width: 0; color: var(--ink); }
+.code-language-options {
+  max-height: min(18rem, 40vh);
+  overflow: auto;
+  overscroll-behavior: contain;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.code-language-options > li {
+  min-height: 29px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  border-radius: 5px;
+  padding: 3px 7px;
+  cursor: pointer;
+}
+.code-language-options > li[aria-selected="true"] { background: var(--selected); }
+.code-language-options > li > span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.code-language-options > li > code { color: var(--muted); font: 11px var(--mono); }
+.code-language-options > li > svg { flex-shrink: 0; color: var(--accent-ink); }
+.code-language-empty { margin: 5px 7px 3px; color: var(--muted); font-size: 12px; }
