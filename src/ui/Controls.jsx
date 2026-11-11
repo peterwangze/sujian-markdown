@@ -55,7 +55,8 @@ export function TabStrip({ docs, active, isDirty, onSelect, onClose, onNew, plus
     const pending = pendingClose.current
     if (!pending || docs.some(doc => doc.id === pending.id)) return
     pendingClose.current = null
-    if (document.activeElement !== document.body && !ref.current?.contains(document.activeElement)) return
+    const focused = document.activeElement
+    if (focused !== document.body && !ref.current?.contains(focused) && !focused?.closest('#write')) return
     const tabs = ref.current?.querySelectorAll('[role="tab"]')
     const target = tabs?.[Math.min(pending.index, tabs.length - 1)] ?? addTab.current
     target?.focus()

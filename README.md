@@ -6,7 +6,7 @@
 
 <p align="center"><strong>写作时看见排版，改稿时看清变化。</strong></p>
 <p align="center">给长文、技术文档和改稿用的本地 Markdown 编辑器。边写边看排版，用键盘找到文件和命令，再把确认过的改动交付出去。</p>
-<p align="center"><a href="https://github.com/peterwangze/sujian-markdown/releases/tag/v1.2.0"><strong>下载 v1.2.0 离线安装包</strong></a> · Windows / macOS / Linux</p>
+<p align="center"><a href="https://github.com/peterwangze/sujian-markdown/releases/tag/v1.2.1"><strong>下载 v1.2.1 离线安装包</strong></a> · Windows / macOS / Linux</p>
 
 ## 用顺手的方式写作
 
@@ -15,7 +15,7 @@
 - **给不同的写作环境换一套配色。** 在 **设置 → 外观** 直接预览暖白、亮白、羊皮纸、雾蓝、深墨、松影和高对比。配色同时应用到编辑、阅读和审阅界面，也可跟随系统切换或导入 CSS。
 - **长文和代码用各自合适的字。** 在 **设置 → 字体** 分别选正文与标题、源码与代码、菜单与界面的字体。调整字号、行距时可就地看样张。内置 Inter、Source Serif 4、JetBrains Mono、Noto Sans SC 和 Noto Serif SC，断网也能用，均随应用附带 SIL Open Font License。在同一页可导入 TTF、OTF、WOFF 或 WOFF2，字体保存在本机的素笺字体库，供本机编辑与阅读使用。
 - **从键盘直达文件、命令和行号。** `Ctrl/⌘+P` 按文件名或路径打开，`Ctrl/⌘+Shift+P` 搜索命令，`Ctrl/⌘+G` 跳到源码指定行。`Ctrl+Tab` 与 `Ctrl+Shift+Tab` 切换标签，`F3` 与 `Shift+F3` 在查找栏打开时浏览匹配。可以在 **设置 → 快捷键** 搜索命令、直接按键录入、查看冲突和恢复默认。
-- **少一次伸手拿鼠标。** 文件侧栏可用方向键在条目间移动、展开和折叠目录。工具菜单支持方向键选择和 `Esc` 返回，打开太多标签时也可以继续使用快速打开。
+- **少一次伸手拿鼠标。** 文件侧栏可用方向键在条目间移动、展开和折叠目录。工具菜单支持方向键选择和 `Esc` 返回。在标签栏用 `Delete` 关闭文件后，可以接着用方向键操作剩余标签。
 - **连续写列表、填表和改代码。** 即时编辑中用 `Tab` 和 `Shift+Tab` 在表格里前后移格，末格按 `Tab` 开新行，`Ctrl/⌘+Enter` 在当前行下插入一行。代码块中可缩进或反缩进当前行。源码模式会续写列表和引用，任务项自动生成未完成的复选框。先按 `Esc` 再按 `Tab` 或 `Shift+Tab` 可移出编辑区。[编辑按键行为](docs/usability.md#正文编辑按键)
 
 ## 写技术文档、审改稿、交付定稿
@@ -62,15 +62,15 @@ Windows 使用安装目录中的 `Sujian.exe`。macOS 使用 `/Applications/Suji
 
 | 系统 | x64 / Intel | ARM64 / Apple 芯片 |
 | --- | --- | --- |
-| Windows | [EXE](https://github.com/peterwangze/sujian-markdown/releases/download/v1.2.0/Sujian-1.2.0-win-x64.exe) | [EXE](https://github.com/peterwangze/sujian-markdown/releases/download/v1.2.0/Sujian-1.2.0-win-arm64.exe) |
-| macOS 13+ | [DMG](https://github.com/peterwangze/sujian-markdown/releases/download/v1.2.0/Sujian-1.2.0-mac-x64.dmg) | [DMG](https://github.com/peterwangze/sujian-markdown/releases/download/v1.2.0/Sujian-1.2.0-mac-arm64.dmg) |
-| Linux | [AppImage](https://github.com/peterwangze/sujian-markdown/releases/download/v1.2.0/Sujian-1.2.0-linux-x86_64.AppImage) · [DEB](https://github.com/peterwangze/sujian-markdown/releases/download/v1.2.0/Sujian-1.2.0-linux-amd64.deb) | [AppImage](https://github.com/peterwangze/sujian-markdown/releases/download/v1.2.0/Sujian-1.2.0-linux-arm64.AppImage) · [DEB](https://github.com/peterwangze/sujian-markdown/releases/download/v1.2.0/Sujian-1.2.0-linux-arm64.deb) |
+| Windows | [EXE](https://github.com/peterwangze/sujian-markdown/releases/download/v1.2.1/Sujian-1.2.1-win-x64.exe) | [EXE](https://github.com/peterwangze/sujian-markdown/releases/download/v1.2.1/Sujian-1.2.1-win-arm64.exe) |
+| macOS 13+ | [DMG](https://github.com/peterwangze/sujian-markdown/releases/download/v1.2.1/Sujian-1.2.1-mac-x64.dmg) | [DMG](https://github.com/peterwangze/sujian-markdown/releases/download/v1.2.1/Sujian-1.2.1-mac-arm64.dmg) |
+| Linux | [AppImage](https://github.com/peterwangze/sujian-markdown/releases/download/v1.2.1/Sujian-1.2.1-linux-x86_64.AppImage) · [DEB](https://github.com/peterwangze/sujian-markdown/releases/download/v1.2.1/Sujian-1.2.1-linux-amd64.deb) | [AppImage](https://github.com/peterwangze/sujian-markdown/releases/download/v1.2.1/Sujian-1.2.1-linux-arm64.AppImage) · [DEB](https://github.com/peterwangze/sujian-markdown/releases/download/v1.2.1/Sujian-1.2.1-linux-arm64.deb) |
 
 - **Windows** 双击 EXE 安装。安装包未做 Authenticode 签名。ARM64 版的 Pandoc 使用 Windows 11 的 x64 仿真。
 - **macOS** 挂载 DMG 后，将素笺拖到“应用程序”。此版本采用临时签名，首次启动时可能需要在“隐私与安全性”中允许打开。[Apple 打开应用说明](https://support.apple.com/en-us/102445)
 - **Linux** 赋予 AppImage 执行权限后打开，或通过软件包管理器安装 DEB。运行依赖发行版提供的 Chromium 系统库。
 
-安装包包含应用运行时、渲染资源、字体与 Pandoc。六种系统与架构组合均通过成品启动检查。[SHA-256 清单](https://github.com/peterwangze/sujian-markdown/releases/download/v1.2.0/SHA256SUMS.txt) · [构建与验证记录](https://github.com/peterwangze/sujian-markdown/actions/workflows/release.yml)
+安装包包含应用运行时、渲染资源、字体与 Pandoc。六种系统与架构组合均通过成品启动检查。[SHA-256 清单](https://github.com/peterwangze/sujian-markdown/releases/download/v1.2.1/SHA256SUMS.txt) · [构建与验证记录](https://github.com/peterwangze/sujian-markdown/actions/workflows/release.yml)
 
 ## 开发与兼容范围
 
