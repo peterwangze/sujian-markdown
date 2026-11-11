@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { ChevronDown, ChevronRight, FileText, Folder, FolderOpen, List, FolderSearch, RotateCcw, Pin, FolderPlus, MoreHorizontal, ArrowUpDown } from 'lucide-react'
 import { desktop, native } from '../workspace/desktop.js'
 import { IconButton } from './Controls.jsx'
@@ -54,17 +54,17 @@ export function Sidebar({ workspace, sidebar, setSidebar, outline, jump, openFol
   const [collapsed, setCollapsed] = useState(new Set())
   useEffect(() => { setRootOpen(true) }, [settings.workspace])
   useEffect(() => { setCollapsed(new Set()) }, [active?.id])
-  const visibleOutline = outline.filter((entry, index) => {
-    let depth = entry.depth
-    for (let n = index - 1; n >= 0 && depth > 1; n--) {
-      const parent = outline[n]
-      if (parent.depth < depth) {
-        if (collapsed.has(parent.line)) return false
-        depth = parent.depth
-      }
+  const visibleOutline = useMemo(() => {
+    const visible = []
+    const sections = []
+    for (const [index, entry] of outline.entries()) {
+      while (sections.at(-1)?.depth >= entry.depth) sections.pop()
+      const hidden = sections.at(-1)?.hidden
+      if (!hidden) visible.push({ ...entry, child: outline[index + 1]?.depth > entry.depth })
+      sections.push({ depth: entry.depth, hidden: hidden || collapsed.has(entry.line) })
     }
-    return true
-  })
+    return visible
+  }, [outline, collapsed])
   return <aside className="sidebar" aria-label="文件与大纲">
     <div className="sidebar-tabs">
       <button className={sidebar === 'files' ? 'selected' : ''} onClick={() => setSidebar('files')}>文件</button>
@@ -74,10 +74,8 @@ export function Sidebar({ workspace, sidebar, setSidebar, outline, jump, openFol
     <div className="sidebar-content">
       {sidebar === 'outline' ? (
         visibleOutline.length ? visibleOutline.map(item => {
-          const index = outline.indexOf(item)
-          const child = outline[index + 1]?.depth > item.depth
           return <div className="outline-row" key={item.line} style={{ '--indent': item.depth - 1 }}>
-            {child ? <button aria-label={collapsed.has(item.line) ? '展开小节' : '折叠小节'}
+            {item.child ? <button aria-label={collapsed.has(item.line) ? '展开小节' : '折叠小节'}
               onClick={() => setCollapsed(previous => {
                 const next = new Set(previous)
                 if (next.has(item.line)) next.delete(item.line)
@@ -89,7 +87,8 @@ export function Sidebar({ workspace, sidebar, setSidebar, outline, jump, openFol
         }) : <p className="sidebar-note">文档中的标题会出现在这里。</p>
       ) : <>
         <div className="tree-root">
-          <button className="tree-row" aria-expanded={rootOpen} onClick={() => setRootOpen(!rootOpen)}>
+          <button className="tree-row" aria-expanded={rootOpen} onClick={() => setRootOpen(!rootOpen)}
+            onContextMenu={settings.workspace ? event => onContext(event, { path: settings.workspace, name: pathTail(settings.workspace), kind: 'directory' }) : undefined}>
             {rootOpen ? <ChevronDown size={14}/> : <ChevronRight size={14}/>}<FolderOpen size={17}/><span>{pathTail(settings.workspace) || '工作区'}</span>
           </button>
           {settings.workspace && <>

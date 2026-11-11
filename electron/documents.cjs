@@ -1,5 +1,6 @@
 const fs = require('node:fs/promises');
 const path = require('node:path');
+const { setTimeout: delay } = require('node:timers/promises');
 const { createHash, randomUUID } = require('node:crypto');
 
 const documentExtension = /\.(?:md|markdown|mdown|mkd|mkdn|mdwn|mdtxt|mdtext|rmd|qmd|txt|text)$/i;
@@ -115,6 +116,21 @@ function snapshot(file) {
   };
 }
 
+async function renameWithRetry(temporary, filePath, beforeReplace) {
+  const retryDelays = [15, 30, 60, 120, 240, 480];
+  for (let attempt = 0; ; attempt += 1) {
+    await beforeReplace?.();
+    try {
+      await fs.rename(temporary, filePath);
+      return;
+    } catch (error) {
+      const retryDelay = retryDelays[attempt];
+      if (process.platform !== 'win32' || !retryDelay || !['EPERM', 'EACCES', 'EBUSY'].includes(error.code)) throw error;
+      await delay(retryDelay);
+    }
+  }
+}
+
 async function atomicWrite(filePath, bytes, { mode = 0o600, preserveMode = false, noReplace = false, beforeReplace } = {}) {
   const parent = path.dirname(filePath);
   const temporary = path.join(parent, `.sujian-${randomUUID()}.tmp`);
@@ -127,17 +143,16 @@ async function atomicWrite(filePath, bytes, { mode = 0o600, preserveMode = false
     } finally {
       await handle.close();
     }
-    if (beforeReplace) await beforeReplace();
     if (noReplace) {
+      await beforeReplace?.();
       try {
         await fs.link(temporary, filePath);
       } catch (error) {
         if (!['ENOSYS', 'ENOTSUP', 'EOPNOTSUPP', 'EPERM'].includes(error.code)) throw error;
-        if (beforeReplace) await beforeReplace();
-        await fs.rename(temporary, filePath);
+        await renameWithRetry(temporary, filePath, beforeReplace);
       }
     } else {
-      await fs.rename(temporary, filePath);
+      await renameWithRetry(temporary, filePath, beforeReplace);
     }
     if (process.platform !== 'win32') {
       const directory = await fs.open(parent, 'r').catch(() => null);

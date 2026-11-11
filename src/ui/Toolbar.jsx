@@ -50,11 +50,14 @@ export function Toolbar({ active, mode, setMode, action, command, settings, nati
         fmt('无序列表', List, 'list'), fmt('有序列表', ListOrdered, 'ordered-list'),
         fmt('任务列表', SquareCheck, 'check'), fmt('引用', Quote, 'quote'), fmt('行内代码', Code, 'inline-code'),
         fmt('代码块', Code, 'code'), fmt('删除线', Strikethrough, 'strike'), fmt('分隔线', Minus, 'line'),
+        fmt('高亮', null, 'highlight'), fmt('下划线', null, 'underline'),
+        fmt('上标', null, 'superscript'), fmt('下标', null, 'subscript'),
         fmt('公式', Sigma, 'math'), fmt('Mermaid 图表', Network, 'mermaid'),
         fmt('目录', List, 'toc'), fmt('脚注', FileText, 'footnote'),
-        act('插入本地图片', Image, 'image', !active), {},
+        act('插入本地图片', Image, 'image', !active), act('上传本地图片', Image, 'upload-images', !active || !native), {},
         fmt('撤销', Undo2, 'undo'), fmt('重做', Redo2, 'redo'),
         act('复制 Markdown', Copy, 'copy-markdown', !active), act('复制富文本', Copy, 'copy-rich', !active),
+        act('复制 HTML 源码', Copy, 'copy-html', !active), act('复制纯文本', Copy, 'copy-plain', !active),
       ]}/>
     </div>
     <div className="right-tools">
@@ -66,6 +69,7 @@ export function Toolbar({ active, mode, setMode, action, command, settings, nati
       <IconButton icon={Settings2} label="设置" onClick={() => action('settings')}/>
       <Menu icon={MoreHorizontal} label="文档与视图" className="align-right" items={[
         act('新建文档', FileText, 'new-file'), act('打开文件', FolderOpen, 'open-files'),
+        act('新建窗口', FileText, 'new-window', !native),
         act('打开文件夹', FolderOpen, 'open-folder', !native), act('快速打开', Search, 'quick-open'),
         act('保存', Save, 'save', !active), act('另存为', Save, 'save-as', !active),
         act('导入文档', FileInput, 'import', !native), act('导出文档', FileOutput, 'export', !active),

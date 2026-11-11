@@ -7,7 +7,7 @@ export const defaults = {
   theme: 'paper', mode: 'live', sidebar: true, fontSize: 17, width: 790, focusMode: false,
   typewriter: false, spellcheck: true, autoSave: false, resume: true, wrap: true,
   workspace: null, recent: [], pinned: [], openPaths: [], customCss: '', imageFolder: '',
-  imageRoot: '', fileList: false, fileSort: 'name', showHidden: false, remoteMedia: false, hotkeys: {},
+  imageRoot: '', uploader: '', uploaderArgs: '', fileList: false, fileSort: 'name', showHidden: false, remoteMedia: false, hotkeys: {},
 }
 
 function createDoc(fields = {}) {
@@ -24,7 +24,7 @@ export const isDirty = doc => !!doc && doc.text !== doc.savedText
 const asDraft = doc => ({ id: doc.id, path: doc.path, name: doc.name, text: doc.text, expectedHash: doc.hash, savedText: doc.savedText })
 const fileKey = path => desktop.platform === 'win32' ? path?.toLowerCase() : path
 
-export function useWorkspace(notify) {
+export function useWorkspace(notify, beforeClose) {
   const [state, setState] = useState({ docs: [example()], activeId: 'guide' })
   const stateRef = useRef(state)
   const [settings, setSettings] = useState(defaults)
@@ -36,6 +36,7 @@ export function useWorkspace(notify) {
   const pendingSaves = useRef(new Map())
   const draftTasks = useRef(new Map())
   const writtenDrafts = useRef(new Map())
+  const closing = useRef(new Set())
   const serializedPreferences = useRef(Promise.resolve())
 
   const commit = useCallback(update => {
@@ -106,6 +107,13 @@ export function useWorkspace(notify) {
     return doc
   }, [append, select])
 
+  const applyDiskChange = useCallback((path, document) => {
+    const doc = stateRef.current.docs.find(item => fileKey(item.path) === fileKey(path))
+    if (!doc || (document && doc.hash === document.hash)) return
+    if (isDirty(doc) || !document) amend(doc.id, { conflict: { document } })
+    else amend(doc.id, { ...document, savedText: document.text, conflict: null })
+  }, [amend])
+
   const runDraft = useCallback((id, work) => {
     const queue = (draftTasks.current.get(id) ?? Promise.resolve()).catch(() => {}).then(work)
     draftTasks.current.set(id, queue)
@@ -117,6 +125,7 @@ export function useWorkspace(notify) {
   const writeDraft = useCallback(doc => {
     const snapshot = asDraft(doc)
     return runDraft(doc.id, async () => {
+      if (closing.current.has(doc.id)) return
       if (isDirty(doc)) {
         const fingerprint = JSON.stringify(snapshot)
         if (writtenDrafts.current.get(doc.id) === fingerprint) return
@@ -181,7 +190,11 @@ export function useWorkspace(notify) {
     const current = stateRef.current.docs.find(item => item.id === id)
     if (!current || (disposition === 'save' && isDirty(current))) return
     if (isDirty(current) && disposition !== 'discard') return
-    await discardDraft(id)
+    closing.current.add(id)
+    try { await discardDraft(id) } catch (error) {
+      closing.current.delete(id)
+      throw error
+    }
     closed.current.push({ ...current, text: current.savedText, conflict: null })
     if (closed.current.length > 30) closed.current.shift()
     commit(previous => {
@@ -189,6 +202,7 @@ export function useWorkspace(notify) {
       const docs = previous.docs.filter(item => item.id !== id)
       return { docs, activeId: previous.activeId === id ? docs[Math.max(index - 1, 0)]?.id ?? null : previous.activeId }
     })
+    closing.current.delete(id)
   }, [commit, discardDraft, save])
 
   const reopen = useCallback(async () => {
@@ -265,13 +279,22 @@ export function useWorkspace(notify) {
     const stopOpen = desktop.onOpenFiles?.(files => append(files.map(fromDisk)))
     const stopChanges = desktop.onExternalChange?.(({ path, document }) => {
       const doc = stateRef.current.docs.find(item => fileKey(item.path) === fileKey(path))
-      if (!doc || doc.hash === document?.hash || pendingSaves.current.has(doc.id)) return
-      if (isDirty(doc) || !document) amend(doc.id, { conflict: { document } })
-      else amend(doc.id, { ...document, savedText: document.text, conflict: null })
+      if (!doc) return
+      const pending = pendingSaves.current.get(doc.id)
+      if (pending) {
+        pending.catch(() => {}).then(async () => {
+          let latest
+          try { latest = await desktop.openPath(path) } catch (error) {
+            if (document) { notify(error.message, true); return }
+            latest = null
+          }
+          if (live) applyDiskChange(path, latest)
+        })
+      } else applyDiskChange(path, document)
     })
     init().catch(error => { handle(error); if (live) setReady(true) })
     return () => { live = false; stopOpen?.(); stopChanges?.() }
-  }, [amend, append, commit, configure, notify, recordRecent])
+  }, [append, applyDiskChange, commit, configure, notify, recordRecent])
 
   const paths = JSON.stringify(state.docs.map(doc => doc.path).filter(Boolean))
   useEffect(() => { desktop.setWatchedFiles(JSON.parse(paths)) }, [paths])
@@ -301,6 +324,7 @@ export function useWorkspace(notify) {
 
   useEffect(() => desktop.onBeforeClose?.(async () => {
     try {
+      beforeClose()
       await Promise.allSettled(pendingSaves.current.values())
       await persistDrafts()
       await serializedPreferences.current
@@ -309,7 +333,7 @@ export function useWorkspace(notify) {
       notify('草稿未写入，窗口保持打开。' + error.message, true)
       await desktop.cancelClose?.()
     }
-  }), [notify, persistDrafts])
+  }), [beforeClose, notify, persistDrafts])
 
   return {
     docs: state.docs, active: state.docs.find(doc => doc.id === state.activeId), settings, ready, saving, recoverable,

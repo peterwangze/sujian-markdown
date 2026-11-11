@@ -16,6 +16,7 @@ export function FindBar({ initial, close, find, replace }) {
     try {
       const match = query && find(query, { ...flags, backward })
       setMessage(match ? match.index + ' / ' + match.count : '无匹配')
+      input.current.focus({ preventScroll: true })
     } catch (error) { setMessage(error.message) }
   }
   function replaceMatches(all) {
@@ -169,6 +170,8 @@ export function Settings({ settings, configure, close, native, initialPanel = 'a
           <input type="checkbox" checked={!!settings[key]} onChange={event => configure({ [key]: event.target.checked })}/></label>)}
         <label className="text-setting">文档图片目录<input disabled={!native} value={settings.imageFolder} placeholder="默认使用文档名.assets" onChange={event => configure({ imageFolder: event.target.value })}/></label>
         <label className="text-setting">图片根路径<input disabled={!native} value={settings.imageRoot} placeholder="用于解析从 / 开始的图片路径" onChange={event => configure({ imageRoot: event.target.value })}/></label>
+        <label className="text-setting">图片上传程序<input disabled={!native} value={settings.uploader} placeholder="程序的完整路径" onChange={event => configure({ uploader: event.target.value })}/></label>
+        <label className="text-setting">上传参数（每行一个）<textarea disabled={!native} value={settings.uploaderArgs} rows="2" onChange={event => configure({ uploaderArgs: event.target.value })}/></label>
       </>}
       {panel === 'shortcuts' && <ShortcutTable settings={settings} configure={configure}/>}
     </div>
@@ -201,12 +204,14 @@ export function ExportDialog({ name, close, run }) {
   const [error, setError] = useState('')
   const [pageSize, setPageSize] = useState('A4')
   const [landscape, setLandscape] = useState(false)
+  const [writer, setWriter] = useState('')
+  const [extension, setExtension] = useState('')
   return <Modal title="导出文档" onClose={() => { if (!busy) close() }}>
     <form onSubmit={async event => {
       event.preventDefault()
       setBusy(true)
       setError('')
-      try { if (await run(format, { pageSize, landscape })) close() }
+      try { if (await run(format, { pageSize, landscape, writer, extension })) close() }
       catch (failure) { setError(failure.message) }
       finally { setBusy(false) }
     }}>
@@ -219,6 +224,10 @@ export function ExportDialog({ name, close, run }) {
           {['A4','A3','A5','Letter','Legal','Tabloid'].map(size => <option key={size}>{size}</option>)}
         </select></label>
         <label className="setting"><span>横向</span><input type="checkbox" checked={landscape} onChange={event => setLandscape(event.target.checked)}/></label>
+      </>}
+      {format === 'custom' && <>
+        <label className="text-setting">Pandoc 输出格式<input required value={writer} onChange={event => setWriter(event.target.value)} placeholder="例如 asciidoc"/></label>
+        <label className="text-setting">文件扩展名<input required pattern="[A-Za-z0-9]{1,16}" value={extension} onChange={event => setExtension(event.target.value)} placeholder="例如 adoc"/></label>
       </>}
       {error && <p className="form-error" role="alert">{error}</p>}
       <footer><button type="button" disabled={busy} onClick={close}>取消</button><button type="submit" className="primary" disabled={busy}>{busy ? '正在生成…' : '导出'}</button></footer>

@@ -212,19 +212,22 @@ export function isLocalImage(source) {
 async function resolveAssets(root, resolveImage, inlineRemote) {
   if (!resolveImage) return;
 
-  await Promise.all([...root.querySelectorAll('img[src]')].map(async (image) => {
-    const source = image.getAttribute('src');
-    if (!isLocalImage(source) && (!inlineRemote || !/^https?:/i.test(source))) return;
+  const requests = [];
+  for (const media of root.querySelectorAll('img[src], audio[src], video[src], source[src], video[poster]')) {
+    for (const attribute of ['src', 'poster']) {
+      const source = media.getAttribute(attribute);
+      if (!source || (!isLocalImage(source) && (!inlineRemote || !/^https?:/i.test(source)))) continue;
 
-    try {
-      const resolved = await resolveImage(source);
-      if (typeof resolved === 'string' && /^(?:sujian-asset:\/\/local\/|blob:|data:image\/|https?:)/i.test(resolved)) {
-        image.src = resolved;
-      }
-    } catch {
-      // Preserve the address and alt text when an asset is missing.
+      requests.push(Promise.resolve().then(() => resolveImage(source)).then((resolved) => {
+        if (typeof resolved === 'string' && /^(?:sujian-asset:\/\/local\/|blob:|data:(?:image|audio|video)\/|https?:)/i.test(resolved)) {
+          media.setAttribute(attribute, resolved);
+        }
+      }).catch(() => {
+        // Preserve the address and alt text when an asset is missing.
+      }));
     }
-  }));
+  }
+  await Promise.all(requests);
 }
 
 function highlightCss(theme) {
@@ -316,6 +319,7 @@ const documentCss = `
 
 export async function renderDocument(markdown, { title = 'Markdown', styled = true, theme = 'light', ...options } = {}) {
   const article = await renderPreview(markdown, { ...options, theme, preview: false });
+  article.id = 'write';
   const mathCss = article.querySelector('.katex') ? await offlineMathCss() : '';
   const codeCss = styled && article.querySelector('.hljs') ? await (await fetch(highlightCss(theme))).text() : '';
   const darkCss = theme === 'dark' ? '@media screen {html {color-scheme:dark} body {background:#181a18;color:#e9ece5}}' : '';

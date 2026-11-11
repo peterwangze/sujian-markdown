@@ -70,6 +70,8 @@ contextBridge.exposeInMainWorld('sujian', {
   toggleFullscreen: invoke('toggle-fullscreen'),
   setTitleBarTheme: invoke('set-title-bar-theme'),
   setSpellcheck: invoke('set-spellcheck'),
+  setHotkeys: invoke('set-hotkeys'),
+  setRemoteMedia: invoke('set-remote-media'),
   finishClose: invoke('finish-close'),
   cancelClose: () => invoke('finish-close')(false),
   onBeforeClose,

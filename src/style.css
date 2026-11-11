@@ -98,7 +98,7 @@ a { color: var(--accent-ink); }
 .tab i { display: block; flex: 0 0 6px; height: 6px; background: var(--accent); border-radius: 50%; }
 .tab .tab-close { flex: 0 0 23px; height: 23px; display: grid; place-items: center; padding: 0; color: var(--muted); }
 .toolbar, .format-tools, .wide-tools, .right-tools { display: flex; align-items: center; gap: 3px; }
-.toolbar { flex: 0 0 auto; justify-content: space-between; gap: clamp(12px, 5vw, 86px); }
+.toolbar { flex: 1.7 0 auto; justify-content: space-between; gap: clamp(12px, 3vw, 60px); }
 .format-tools { border-left: 1px solid var(--border); padding-left: 11px; }
 .right-tools { gap: 6px; }
 .icon-button, .heading-button { height: 31px; width: 32px; flex-shrink: 0; display: inline-grid; place-items: center; padding: 0; }
@@ -111,6 +111,7 @@ a { color: var(--accent-ink); }
 .tool-menu-list {
   position: absolute; z-index: 9; top: calc(100% + 5px); left: 0; min-width: 162px; padding: 4px;
   border: 1px solid var(--border); border-radius: 8px; background: var(--surface); box-shadow: var(--shadow);
+  max-height: calc(100dvh - 128px); overflow-y: auto;
 }
 .align-right .tool-menu-list { left: auto; right: 0; }
 .tool-menu-list button { display: flex; align-items: center; gap: 9px; width: 100%; white-space: nowrap; text-align: left; min-height: 29px; padding: 4px 7px; }
@@ -120,6 +121,11 @@ a { color: var(--accent-ink); }
 .editor-frame .editor-surface { height: 100%; }
 .editor-frame .editor-live { background: var(--canvas); color: var(--ink); }
 .editor-frame .vditor { border: 0; background: transparent; color: var(--ink); }
+.editor-frame .vditor {
+  --panel-background-color: var(--canvas);
+  --textarea-background-color: var(--canvas);
+  --second-color: var(--muted);
+}
 .editor-frame .vditor-content, .editor-frame .vditor-ir, .editor-frame .vditor-reset { background: transparent; color: var(--ink); }
 .editor-frame .vditor-reset,
 .read-body article, .editor-frame .editor-preview article {
@@ -128,10 +134,13 @@ a { color: var(--accent-ink); }
 }
 .editor-frame .editor-live .vditor-ir > .vditor-reset {
   padding: 29px max(34px, calc((100% - var(--document-width)) / 2)) 112px !important;
-  min-height: 100%; outline: none; scrollbar-color: var(--border) transparent;
+  min-height: 100%; outline: none; scrollbar-color: var(--border) transparent; background-color: var(--canvas);
 }
+.editor-frame .vditor-ir > .vditor-reset > :is(h1,h2,h3,h4,h5,h6):not(.vditor-ir__node--expand)::before { display: none; }
 .editor-frame .editor-preview { background: var(--canvas); color: var(--ink); }
+.editor-frame .editor-preview { padding: 0; }
 .editor-frame .editor-preview > div, .read-body { max-width: calc(var(--document-width) + 68px); margin: 0 auto; padding: 28px 34px 94px; }
+.editor-frame .editor-mode-read { --content-width: var(--document-width); }
 .editor-frame .editor-mode-split .editor-preview > div { padding: 26px 23px; }
 .read-view { overflow: auto; }
 .editor-frame .vditor-reset h1, .read-body h1, .editor-frame .editor-preview h1 {
@@ -141,6 +150,9 @@ a { color: var(--accent-ink); }
   font: 700 1.55em/1.3 var(--serif); margin: 1em 0 .32em; border: 0;
 }
 .editor-frame .vditor-reset h1 + h2, .read-body h1 + h2 { margin-top: .25em; }
+.editor-frame .editor-live .vditor-reset > h1 { margin-bottom: .18em; }
+.editor-frame .editor-live .vditor-reset > h2 { margin-top: .75em; }
+.editor-frame .editor-live .vditor-reset > h1 + h2 { margin-top: .12em; }
 .editor-frame .vditor-reset p, .read-body p, .editor-frame .editor-preview p { margin: 0 0 .86em; }
 .editor-frame .vditor-reset hr, .read-body hr, .editor-frame .editor-preview hr { border: 0; height: 1px; background: var(--border); margin: .55em 0 1.05em; }
 .editor-frame .vditor-reset blockquote, .read-body blockquote, .editor-frame .editor-preview blockquote {
@@ -148,6 +160,8 @@ a { color: var(--accent-ink); }
   padding: .52em .95em; margin: 1.15em 0; border-radius: 0 4px 4px 0;
 }
 .editor-frame .vditor-reset blockquote > :last-child, .read-body blockquote > :last-child { margin-bottom: 0; }
+.editor-frame .editor-live .vditor-reset blockquote:not(.callout)::before { display: none; }
+.editor-frame .editor-live .vditor-reset li > p { margin-bottom: .18em; }
 .editor-frame .vditor-reset ul, .editor-frame .vditor-reset ol, .read-body ol, .read-body ul { padding-left: 1.6em; margin: .36em 0 .92em; }
 .editor-frame .vditor-reset table, .read-body table, .editor-frame .editor-preview table {
   width: 100%; display: table; font-size: .9em; border-collapse: collapse; margin: .55em 0 1.1em;

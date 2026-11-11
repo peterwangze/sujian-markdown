@@ -34,8 +34,8 @@
 .editor-live .vditor-toolbar--hide { display: none !important; }
 .editor-live .vditor-content, .editor-live .vditor-ir { min-height: 0; }
 .editor-live .vditor-ir > .vditor-reset { overflow: auto; }
-.editor-no-wrap .editor-live .vditor-ir > .vditor-reset { white-space: pre; overflow-x: auto; }
 .editor-focus-mode .vditor-ir > .vditor-reset:has([data-sujian-active]) > [data-block="0"]:not([data-sujian-active]) { opacity: .45; }
+::highlight(sujian-underline) { text-decoration: underline; }
 .editor-table-toolbar {
   position: absolute;
   z-index: 5;

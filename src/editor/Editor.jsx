@@ -1,5 +1,5 @@
 import { useEffect, useImperativeHandle, useLayoutEffect, useRef, useState } from 'react';
-import { Compartment, EditorSelection, EditorState, Transaction } from '@codemirror/state';
+import { Annotation, Compartment, EditorSelection, EditorState, Transaction } from '@codemirror/state';
 import { EditorView, drawSelection, dropCursor, highlightActiveLine, keymap } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap, indentWithTab, redo, undo } from '@codemirror/commands';
 import { defaultHighlightStyle, syntaxHighlighting } from '@codemirror/language';
@@ -14,6 +14,7 @@ import './editor.css';
 const nativeCommands = ['bold', 'italic', 'strike', 'inline-code', 'quote', 'list', 'ordered-list', 'check', 'indent', 'outdent', 'undo', 'redo'];
 const lineCommands = ['heading', 'quote', 'list', 'ordered-list', 'check', 'indent', 'outdent'];
 const sourceText = (value) => value.replace(/\r\n?/g, '\n');
+const externalEdit = Annotation.define();
 const tableActions = [
   ['rowAbove', '上方加行', 'f', true], ['rowBelow', '下方加行', '='],
   ['columnLeft', '左侧加列', 'g', true], ['columnRight', '右侧加列', '=', true],
@@ -87,6 +88,42 @@ function markdownHeading(line) {
   return line.match(/^\s{0,3}#{1,6}\s+(.*?)\s*#*\s*$/)?.[1];
 }
 
+function caretPoint(root, node, offset) {
+  const path = [];
+  for (let current = node; current !== root; current = current.parentNode) {
+    if (!current?.parentNode) return null;
+    path.unshift(Array.prototype.indexOf.call(current.parentNode.childNodes, current));
+  }
+  return { path, offset };
+}
+
+function restoreCaret(root, caret) {
+  if (!caret?.anchor || !caret.focus) return;
+  const resolve = (point) => point.path.reduce((node, index) => node?.childNodes[index], root);
+  const anchor = resolve(caret.anchor);
+  const focus = resolve(caret.focus);
+  if (!anchor || !focus) return;
+  const offset = (node, point) => Math.min(point.offset, node.nodeType === Node.TEXT_NODE ? node.length : node.childNodes.length);
+  window.getSelection()?.setBaseAndExtent(anchor, offset(anchor, caret.anchor), focus, offset(focus, caret.focus));
+}
+
+function updateUnderlines(root) {
+  if (!CSS.highlights || typeof Highlight !== 'function') return;
+  const openings = [];
+  const ranges = [];
+  for (const marker of root.querySelectorAll('[data-type="html-inline"] > code')) {
+    const syntax = marker.textContent.trim();
+    if (/^<u(?:\s[^>]*)?>$/i.test(syntax)) openings.push(marker.parentElement);
+    if (/^<\/u\s*>$/i.test(syntax) && openings.length) {
+      const range = document.createRange();
+      range.setStartAfter(openings.pop());
+      range.setEndBefore(marker.parentElement);
+      ranges.push(range);
+    }
+  }
+  CSS.highlights.set('sujian-underline', new Highlight(...ranges));
+}
+
 export function Editor({
   docId, value = '', mode = 'live', onChange, onSelection, onLink, onImage, resolveImage,
   assetUrl, focusMode = false, typewriter = false, spellcheck = false, wrap = true, allowRemoteMedia = true, theme = 'light', editorRef,
@@ -100,6 +137,8 @@ export function Editor({
   const latest = useRef(null);
   const content = useRef({ id: docId, raw: value, rich: null });
   const imageCache = useRef(new Map());
+  const tabMemory = useRef(new Map());
+  const liveCaret = useRef(null);
   const lastFind = useRef(null);
   const activeBlock = useRef(null);
   const activeCell = useRef(null);
@@ -134,7 +173,7 @@ export function Editor({
 
   function sourceUpdate(update) {
     if (latest.current.mode === 'live') return;
-    if (update.docChanged && update.transactions.some((transaction) => transaction.annotation(Transaction.addToHistory) !== false)) {
+    if (update.docChanged && update.transactions.some((transaction) => !transaction.annotation(externalEdit))) {
       publish(projectMarkdownEdit(content.current.raw, update.startState.doc.toString(), update.state.doc.toString()));
     }
     if (update.selectionSet) {
@@ -154,8 +193,9 @@ export function Editor({
       if (!imageCache.current.has(address)) {
         imageCache.current.set(address, Promise.resolve().then(() => load(address)).catch(() => undefined));
       }
-      void imageCache.current.get(address).then((url) => {
-        if (typeof url === 'string' && image.getAttribute('src') === address && /^(?:sujian-asset:\/\/local\/|data:image\/|blob:|https?:)/i.test(url)) {
+      const pending = imageCache.current.get(address);
+      void pending.then((url) => {
+        if (imageCache.current.get(address) === pending && typeof url === 'string' && image.getAttribute('src') === address && /^(?:sujian-asset:\/\/local\/|data:image\/|blob:|https?:)/i.test(url)) {
           // Lute reads src. srcset supplies the resolved display resource while keeping Markdown portable.
           image.srcset = `${url} 1x`;
         }
@@ -229,6 +269,16 @@ export function Editor({
   }, [wrap]);
 
   useEffect(() => {
+    if (mode !== 'read') return;
+    const selectionChange = () => {
+      const selection = window.getSelection();
+      if (previewHost.current?.contains(selection?.anchorNode)) latest.current.onSelection?.(selection.toString());
+    };
+    document.addEventListener('selectionchange', selectionChange);
+    return () => document.removeEventListener('selectionchange', selectionChange);
+  }, [mode]);
+
+  useEffect(() => {
     if (!richMounted) return;
     const host = richHost.current;
     let alive = true;
@@ -238,18 +288,21 @@ export function Editor({
       if (!event.isComposing) queueMicrotask(commitRich);
     };
     const selectionChange = () => {
-      const selection = window.getSelection();
-      const anchor = selection?.anchorNode;
-      if (latest.current.mode === 'read' && anchor && previewHost.current?.contains(anchor)) {
-        latest.current.onSelection?.(selection.toString());
-        return;
-      }
       if (latest.current.mode !== 'live' || !rich.current) return;
+      const anchor = window.getSelection()?.anchorNode;
       if (!anchor || !host.contains(anchor)) {
         if (activeCell.current) selectCell(null);
         return;
       }
       const element = anchor.nodeType === Node.ELEMENT_NODE ? anchor : anchor.parentElement;
+      const selection = window.getSelection();
+      const editor = rich.current.vditor.ir.element;
+      if (editor.contains(anchor) && editor.contains(selection.focusNode)) {
+        liveCaret.current = {
+          anchor: caretPoint(editor, anchor, selection.anchorOffset),
+          focus: caretPoint(editor, selection.focusNode, selection.focusOffset),
+        };
+      }
       const cell = element?.closest('td, th') ?? null;
       if (cell || activeCell.current) selectCell(cell);
       const block = element?.closest('[data-block="0"]');
@@ -298,9 +351,14 @@ export function Editor({
           editable.setAttribute('aria-label', 'Markdown 即时编辑');
           editable.spellcheck = latest.current.spellcheck;
           if (latest.current.theme === 'dark') instance.setTheme('dark', 'dark');
-          observer = new MutationObserver(resolveLiveAssets);
-          observer.observe(editable, { childList: true, subtree: true, attributes: true, attributeFilter: ['src'] });
+          const decorate = () => {
+            resolveLiveAssets();
+            updateUnderlines(editable);
+          };
+          observer = new MutationObserver(decorate);
+          observer.observe(editable, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['src'] });
           resolveLiveAssets();
+          updateUnderlines(editable);
         },
       });
     }).catch((error) => {
@@ -316,6 +374,7 @@ export function Editor({
       host.removeEventListener('compositionend', flush, true);
       document.removeEventListener('selectionchange', selectionChange);
       observer?.disconnect();
+      CSS.highlights?.delete('sujian-underline');
       if (rich.current) {
         rich.current.destroy();
         rich.current = null;
@@ -326,8 +385,24 @@ export function Editor({
   useLayoutEffect(() => {
     const changedDocument = content.current.id !== docId;
     const changedText = content.current.raw !== value;
+    const view = source.current;
+    const richElement = rich.current?.vditor.ir.element;
+    const remembered = tabMemory.current.get(docId);
     if (changedDocument) {
+      const previous = content.current;
+      const state = tabMemory.current.get(previous.id) ?? {};
+      if (view) {
+        state.source = view.state;
+        state.sourceScroll = { top: view.scrollDOM.scrollTop, left: view.scrollDOM.scrollLeft };
+      }
+      if (richElement && previous.rich !== null) {
+        state.live = { raw: previous.raw, caret: liveCaret.current, top: richElement.scrollTop, left: richElement.scrollLeft };
+      }
+      tabMemory.current.delete(previous.id);
+      tabMemory.current.set(previous.id, state);
+      if (tabMemory.current.size > 16) tabMemory.current.delete(tabMemory.current.keys().next().value);
       content.current.id = docId;
+      liveCaret.current = remembered?.live?.caret ?? null;
       imageCache.current.clear();
       lastFind.current = null;
       selectCell(null);
@@ -337,14 +412,31 @@ export function Editor({
     if (changedText || changedDocument) content.current.raw = value;
 
     const next = sourceText(content.current.raw);
-    const view = source.current;
     if (view && changedDocument) {
-      view.setState(EditorState.create({ doc: next, extensions: sourceExtensions(sourceUpdate, latest, wrapping.current) }));
+      const state = remembered?.source;
+      if (state?.doc.toString() === next) {
+        view.setState(state);
+        view.dispatch({ effects: wrapping.current.reconfigure(latest.current.wrap ? EditorView.lineWrapping : []) });
+      } else {
+        view.setState(EditorState.create({ doc: next, extensions: sourceExtensions(sourceUpdate, latest, wrapping.current) }));
+      }
+      view.scrollDOM.scrollTo(remembered?.sourceScroll ?? { top: 0, left: 0 });
     } else if (view && view.state.doc.toString() !== next && (mode !== 'live' || changedText)) {
-      view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: next }, annotations: Transaction.addToHistory.of(false) });
+      view.dispatch({
+        changes: { from: 0, to: view.state.doc.length, insert: next },
+        annotations: [externalEdit.of(true), Transaction.addToHistory.of(false)],
+      });
     }
 
-    if (mode === 'live' && (changedDocument || changedText || content.current.rich === null)) syncRich();
+    if (mode === 'live' && (changedDocument || changedText || content.current.rich === null)) {
+      syncRich();
+      if (richElement && remembered?.live?.raw === value) {
+        restoreCaret(richElement, remembered.live.caret);
+        richElement.scrollTo({ top: remembered.live.top, left: remembered.live.left });
+      } else if (richElement && changedDocument) {
+        richElement.scrollTo({ top: 0, left: 0 });
+      }
+    }
     if (mode !== 'live') {
       content.current.rich = null;
       if (activeCell.current) selectCell(null);
@@ -359,6 +451,16 @@ export function Editor({
       rich.current.setTheme(theme === 'dark' ? 'dark' : 'classic', theme === 'dark' ? 'dark' : 'light');
     }
   }, [spellcheck, theme, typewriter, docId]);
+
+  useEffect(() => {
+    imageCache.current.clear();
+    const images = rich.current?.vditor.ir.element.querySelectorAll('img[data-sujian-source]') ?? [];
+    for (const image of images) {
+      delete image.dataset.sujianSource;
+      image.removeAttribute('srcset');
+    }
+    resolveLiveAssets();
+  }, [docId, resolveImage, assetUrl]);
 
   useEffect(() => {
     if (mode !== 'split' && mode !== 'read') return;
@@ -377,7 +479,7 @@ export function Editor({
       alive = false;
       clearTimeout(timer);
     };
-  }, [value, mode, docId, theme, allowRemoteMedia]);
+  }, [value, mode, docId, theme, allowRemoteMedia, resolveImage, assetUrl]);
 
   function command(name, payload) {
     if (latest.current.mode === 'read') return false;
@@ -552,7 +654,7 @@ export function Editor({
   }
 
   return (
-    <div className={`editor-surface editor-mode-${mode}${focusMode ? ' editor-focus-mode' : ''}${typewriter ? ' editor-typewriter' : ''}${wrap ? '' : ' editor-no-wrap'}`}
+    <div className={`editor-surface editor-mode-${mode}${focusMode ? ' editor-focus-mode' : ''}${typewriter ? ' editor-typewriter' : ''}`}
       onClickCapture={handleLink} onPasteCapture={handleFiles} onDropCapture={handleFiles}>
       <div className="editor-live" hidden={mode !== 'live'}>
         <div className="editor-rich-host" ref={richHost} />

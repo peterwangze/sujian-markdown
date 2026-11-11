@@ -1,4 +1,7 @@
-const inlineMarkers = { bold: '**', italic: '*', strike: '~~', 'inline-code': '`', highlight: '==' };
+const inlineMarkers = {
+  bold: '**', italic: '*', strike: '~~', 'inline-code': '`', highlight: '==',
+  superscript: '^', subscript: '~', underline: '<u>',
+};
 
 function block(text, beforeLine) {
   return beforeLine.trim() ? `\n\n${text}\n\n` : `${text}\n\n`;
@@ -18,8 +21,11 @@ function linkDestination(value) {
 export function formatMarkdown(command, payload, selection, beforeLine = '') {
   const marker = inlineMarkers[command];
   if (marker) {
-    const text = `${marker}${selection}${marker}`;
-    return { text, offset: marker.length, length: selection.length };
+    const script = command === 'superscript' || command === 'subscript';
+    const body = script ? selection.replace(/\\/g, '\\\\').replace(/[\t ^~]/g, '\\$&') : selection;
+    const close = command === 'underline' ? '</u>' : marker;
+    const text = `${marker}${body}${close}`;
+    return { text, offset: marker.length, length: body.length };
   }
 
   const selected = selection || '';

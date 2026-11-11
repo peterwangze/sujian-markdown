@@ -1,3 +1,5 @@
+import { markdownLanguage } from '@codemirror/lang-markdown'
+
 export const MAX_LIVE_LENGTH = 200_000
 
 export function headings(markdown) {
@@ -52,5 +54,36 @@ export const formats = [
   ['rtf','富文本 RTF'], ['epub','EPUB 电子书'], ['latex','LaTeX'],
   ['rst','reStructuredText'], ['org','Emacs Org'], ['mediawiki','MediaWiki'],
   ['textile','Textile'], ['opml','OPML 大纲'], ['revealjs','Reveal.js 幻灯片'],
-  ['gfm','GitHub Markdown'], ['commonmark','CommonMark'], ['markdown','Pandoc Markdown'], ['plain','纯文本'],
+  ['gfm','GitHub Markdown'], ['commonmark','CommonMark'], ['markdown','Pandoc Markdown'],
+  ['markdown_extra','PHP Markdown Extra'], ['dokuwiki','DokuWiki'], ['plain','纯文本'], ['custom','自定义 Pandoc 格式'],
 ]
+
+function inlineImageTargets(text) {
+  const targets = []
+  markdownLanguage.parser.parse(text).iterate({
+    enter(node) {
+      if (node.name !== 'Image') return
+      const url = node.node.getChild('URL')
+      if (!url) return
+      const raw = text.slice(url.from, url.to)
+      const source = raw.startsWith('<') ? raw.slice(1, -1) : raw
+      targets.push({ from: url.from, to: url.to, source })
+    },
+  })
+  return targets
+}
+
+export function localImageSources(text) {
+  return [...new Set(inlineImageTargets(text).map(target => target.source)
+    .filter(source => !/^(?:https?:|data:|blob:|\/\/)/i.test(source)))]
+}
+
+export function updateImageSources(text, replacements) {
+  const urls = new Map(replacements.map(({ source, url }) => [source, url]))
+  let next = text
+  for (const { from, to, source } of inlineImageTargets(text).reverse()) {
+    const url = urls.get(source)
+    if (url) next = next.slice(0, from) + '<' + url.replace(/[<>\s]/g, encodeURIComponent) + '>' + next.slice(to)
+  }
+  return next
+}

@@ -5,6 +5,7 @@ const { tmpdir } = require('node:os');
 const { execFile } = require('node:child_process');
 const { promisify } = require('node:util');
 const { randomUUID } = require('node:crypto');
+const { pathToFileURL } = require('node:url');
 const { atomicWrite } = require('./documents.cjs');
 
 const run = promisify(execFile);
@@ -19,7 +20,7 @@ const exportFormats = {
   opml: ['opml', 'OPML', 'opml'], revealjs: ['html', 'Reveal.js', 'revealjs'],
   markdown: ['md', 'Markdown (Pandoc)', 'markdown'], gfm: ['md', 'GitHub Flavored Markdown', 'gfm'],
   commonmark: ['md', 'CommonMark', 'commonmark'], markdown_extra: ['md', 'PHP Markdown Extra', 'markdown_phpextra'],
-  org: ['org', 'Org Mode', 'org'], custom: ['txt', 'Pandoc', ''],
+  org: ['org', 'Org Mode', 'org'], plain: ['txt', '纯文本', 'plain'], custom: ['txt', 'Pandoc', ''],
 };
 const importFormats = {
   docx: 'docx', odt: 'odt', rtf: 'rtf', latex: 'latex', tex: 'latex', ltx: 'latex',
@@ -85,6 +86,17 @@ async function usePandoc(args, { cwd, executable } = {}) {
   } catch (error) {
     if (error.code === 'ENOENT') throw new Error('未找到 Pandoc。请使用包含 Pandoc 的安装包，或在偏好设置中指定其路径。');
     throw new Error(error.stderr?.trim() || error.message);
+  }
+}
+
+async function revealRoot() {
+  const packaged = path.join(process.resourcesPath, 'revealjs');
+  try {
+    await fs.access(path.join(packaged, 'dist', 'reveal.js'));
+    return pathToFileURL(packaged).href;
+  } catch {
+    const installed = path.dirname(path.dirname(require.resolve('reveal.js')));
+    return pathToFileURL(installed).href;
   }
 }
 
@@ -277,7 +289,7 @@ function createConversion({ assets, userDataPath }) {
         if (options.referenceDocument && ['docx', 'odt'].includes(format)) args.push('--reference-doc', options.referenceDocument);
         if (options.template) args.push('--template', options.template);
         if (options.toc || toc) args.push('--toc');
-        if (format === 'revealjs' && options.revealjsUrl) args.push('--variable', `revealjs-url=${options.revealjsUrl}`);
+        if (format === 'revealjs') args.push('--embed-resources', '--variable', `revealjs-url=${options.revealjsUrl || await revealRoot()}`);
         if (Array.isArray(options.args) && options.args.every((item) => typeof item === 'string')) args.push(...options.args);
         args.push('--output', output, input);
         await usePandoc(args, { cwd: documentPath ? path.dirname(documentPath) : app.getPath('documents'), executable: options.pandocPath });

@@ -1,12 +1,12 @@
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
-import { FileText, Plus, CircleCheck, AlertTriangle, FolderOpen, ChevronDown, BookOpen, FileInput, FileOutput } from 'lucide-react'
+import { FileText, Plus, CircleCheck, AlertTriangle, FolderOpen, ChevronDown, BookOpen } from 'lucide-react'
 import { Editor, renderDocument } from './editor/index.js'
 import { IconButton, Modal, TabStrip } from './ui/Controls.jsx'
 import { Sidebar } from './ui/Sidebar.jsx'
 import { Toolbar } from './ui/Toolbar.jsx'
 import { ExportDialog, FindBar, FolderSearch, QuickOpen, Recovery, Settings, shortcuts } from './ui/Dialogs.jsx'
 import { desktop, native } from './workspace/desktop.js'
-import { headings, MAX_LIVE_LENGTH, slug, wordCount } from './workspace/text.js'
+import { headings, localImageSources, MAX_LIVE_LENGTH, slug, updateImageSources, wordCount } from './workspace/text.js'
 import { isDirty, useWorkspace } from './workspace/useWorkspace.js'
 
 const nativeShortcuts = new Set(['new-file', 'open-files', 'open-folder', 'save', 'save-as', 'close-tab', 'reopen-tab', 'quick-open', 'find', 'replace', 'search-folder', 'view-source', 'toggle-sidebar', 'toggle-focus', 'toggle-typewriter', 'export', 'settings'])
@@ -43,29 +43,9 @@ function keyMatches(event, shortcut) {
     event.metaKey === (keys.includes('cmd') || keys.includes('meta') || (mod && mac))
 }
 
-function ReadView({ markdown, name, theme, resolveImage, onLink }) {
-  const [body, setBody] = useState('')
-  const [error, setError] = useState('')
-  useEffect(() => {
-    let live = true
-    setError('')
-    renderDocument(markdown, { title: name, theme, resolveImage }).then(html => {
-      if (live) setBody(new DOMParser().parseFromString(html, 'text/html').body.innerHTML)
-    }).catch(failure => { if (live) setError(failure.message) })
-    return () => { live = false }
-  }, [markdown, name, theme, resolveImage])
-  return <div className="read-view">
-    {error && <p className="form-error">{error}</p>}
-    <div className="read-body" onClick={event => {
-      const link = event.target.closest('a')
-      if (!link) return
-      const href = link.getAttribute('href')
-      if (href && !href.startsWith('#')) { event.preventDefault(); onLink(href) }
-    }} dangerouslySetInnerHTML={{ __html: body }}/>
-  </div>
-}
-
 export default function App() {
+  const editor = useRef(null)
+  const flushEditor = useCallback(() => editor.current?.getValue(), [])
   const [message, setMessage] = useState(null)
   const noticeTimer = useRef(null)
   const notify = useCallback((text, error = false) => {
@@ -73,7 +53,7 @@ export default function App() {
     setMessage({ text, error })
     noticeTimer.current = setTimeout(() => setMessage(null), error ? 7500 : 3000)
   }, [])
-  const workspace = useWorkspace(notify)
+  const workspace = useWorkspace(notify, flushEditor)
   const { docs, active, settings, configure, amend, ready } = workspace
   const [sidebar, setSidebar] = useState('files')
   const [dialog, setDialog] = useState(null)
@@ -82,7 +62,6 @@ export default function App() {
   const [refresh, setRefresh] = useState(0)
   const [context, setContext] = useState(null)
   const [systemDark, setSystemDark] = useState(() => matchMedia('(prefers-color-scheme: dark)').matches)
-  const editor = useRef(null)
   const activeId = useRef(null)
   activeId.current = active?.id
   const requestedJump = useRef(null)
@@ -108,6 +87,8 @@ export default function App() {
   }, [dark, settings.theme, run])
 
   useEffect(() => { run(() => desktop.setSpellcheck?.(settings.spellcheck)) }, [settings.spellcheck, run])
+  useEffect(() => { run(() => desktop.setHotkeys?.(settings.hotkeys)) }, [settings.hotkeys, run])
+  useEffect(() => { run(() => desktop.setRemoteMedia?.(settings.remoteMedia)) }, [settings.remoteMedia, run])
   useEffect(() => {
     document.title = active ? active.name + ' — 素笺' : '素笺'
     setSelection('')
@@ -128,7 +109,6 @@ export default function App() {
     amend(active.id, { mode: next })
   }
 
-  const flushEditor = () => editor.current?.getValue()
   function openFolder() {
     return run(async () => {
       const path = await desktop.openFolder?.()
@@ -202,6 +182,24 @@ export default function App() {
     })
   }
 
+  function openDroppedFiles(event) {
+    const files = [...event.dataTransfer.files].filter(file => !file.type.startsWith('image/'))
+    if (!files.length) return
+    event.preventDefault()
+    event.stopPropagation()
+    flushEditor()
+    run(async () => {
+      for (const file of files) {
+        const path = desktop.filePath?.(file)
+        if (path) await workspace.openPath(path)
+        else if (/\.(?:md|markdown|mdown|mkd|txt)$/i.test(file.name)) {
+          const text = await file.text()
+          workspace.add({ name: file.name, text, savedText: text })
+        }
+      }
+    })
+  }
+
   function command(name, payload) {
     if (!active) return
     if (mode === 'read') { notify('切换到编辑模式后即可修改。'); return }
@@ -221,6 +219,7 @@ export default function App() {
     const text = flushEditor() ?? active.text
     const html = visualExports.has(format) ? await renderDocument(text, {
       title: active.name, styled: format !== 'html-plain', theme: renderTheme, resolveImage: embeddedImage,
+      allowRemoteMedia: settings.remoteMedia,
     }) : undefined
     const result = await desktop.exportDocument({
       format, html, text, documentPath: active.path, defaultName: active.name,
@@ -254,15 +253,31 @@ export default function App() {
       case 'toggle-dark': configure({ theme: dark ? 'paper' : 'dark' }); break
       case 'fullscreen': run(() => desktop.toggleFullscreen()); break
       case 'pin-folder': if (settings.workspace && !settings.pinned.includes(settings.workspace)) configure({ pinned: [...settings.pinned, settings.workspace] }); break
-      case 'image': insertImages(); break
+      case 'image':
+        if (mode === 'read') notify('切换到编辑模式后即可插入图片。')
+        else insertImages()
+        break
+      case 'upload-images': {
+        if (!active || !desktop.uploadImages) break
+        if (!settings.uploader.trim()) {
+          setDialog({ type: 'settings', panel: 'files' })
+          notify('请填写图片上传程序。')
+          break
+        }
+        const sources = localImageSources(flushEditor() ?? active.text)
+        if (!sources.length) { notify('文档中没有可上传的本地图片。'); break }
+        setDialog({ type: 'upload-images', sources })
+        break
+      }
       case 'copy-markdown':
         run(() => desktop.writeClipboard({ text: editor.current?.getSelection() || flushEditor() || '' }))
         break
-      case 'copy-rich':
+      case 'copy-rich': case 'copy-html': case 'copy-plain':
         run(async () => {
           const text = editor.current?.getSelection() || flushEditor() || ''
-          const html = await renderDocument(text, { resolveImage: embeddedImage })
-          await desktop.writeClipboard({ text, html })
+          const html = await renderDocument(text, { resolveImage: embeddedImage, allowRemoteMedia: settings.remoteMedia })
+          const plain = new DOMParser().parseFromString(html, 'text/html').body.textContent
+          await desktop.writeClipboard(key === 'copy-html' ? { text: html } : key === 'copy-plain' ? { text: plain } : { text: plain, html })
           notify('已复制')
         })
         break
@@ -347,7 +362,9 @@ export default function App() {
           event.preventDefault()
           setContext({ x: Math.min(event.clientX, innerWidth - 180), y: Math.min(event.clientY, innerHeight - 270), item })
         }}/>}
-      <main className="work-area">
+      <main className="work-area" onDragOver={event => {
+        if ([...event.dataTransfer.types].includes('Files')) event.preventDefault()
+      }} onDrop={openDroppedFiles}>
         <div className="topline">
           <TabStrip docs={docs} active={active} isDirty={isDirty} onSelect={id => { flushEditor(); workspace.select(id) }}
             onClose={closeTab} onNew={() => action('new-file')} plus={Plus}/>
@@ -360,15 +377,15 @@ export default function App() {
           <button onClick={() => setDialog({ type: 'conflict' })}>处理冲突 <ChevronDown size={13}/></button>
         </div>}
         {active?.text.length > MAX_LIVE_LENGTH && mode === 'source' && <div className="large-note">已为长文档启用源码编辑 <button onClick={() => setMode('live')}>切换到即时渲染</button></div>}
-        {active && <>
-          <div className={'editor-frame ' + (!settings.wrap ? 'no-wrap' : '')} hidden={mode === 'read'}>
-            <Editor docId={active.id} value={active.text} mode={mode === 'read' ? 'source' : mode} editorRef={editor}
+        {active && (
+          <div id="write" className="editor-frame">
+            <Editor docId={active.id} value={active.text} mode={mode} editorRef={editor}
               onChange={text => amend(active.id, { text })} onSelection={setSelection} onLink={followLink} onImage={insertImages}
               assetUrl={assetUrl} resolveImage={resolveImage} theme={renderTheme}
+              wrap={settings.wrap} allowRemoteMedia={settings.remoteMedia}
               focusMode={settings.focusMode} typewriter={settings.typewriter} spellcheck={settings.spellcheck}/>
           </div>
-          {mode === 'read' && <ReadView markdown={active.text} name={active.name} theme={renderTheme} resolveImage={resolveImage} onLink={followLink}/>}
-        </>}
+        )}
         {!active && <div className="empty-workspace"><BookOpen size={32} strokeWidth={1.25}/><h1>打开或新建文档</h1>
           <div><button className="primary" onClick={() => action('new-file')}><Plus size={16}/> 新建文档</button>
             <button onClick={() => action('open-files')}><FolderOpen size={16}/> 打开文档</button></div>
@@ -388,6 +405,23 @@ export default function App() {
     {dialog?.type === 'search-folder' && <FolderSearch path={settings.workspace} close={closeDialog} notify={notify}
       jump={(path, line) => run(async () => { flushEditor(); const next = await workspace.openPath(path); jump(line, next); closeDialog() })}/>}
     {dialog?.type === 'export' && active && <ExportDialog name={active.name} close={closeDialog} run={exportFile}/>}
+    {dialog?.type === 'upload-images' && active && <Modal title="上传本地图片" onClose={closeDialog}>
+      <p className="modal-detail">将使用设置中的程序上传 {dialog.sources.length} 张图片，并替换文档中的图片地址。</p>
+      <footer><button onClick={closeDialog}>取消</button>
+        <button className="primary" onClick={() => {
+          const doc = active
+          const { sources } = dialog
+          closeDialog()
+          run(async () => {
+            const replacements = await desktop.uploadImages({
+              documentPath: doc.path, sources, rootPath: settings.imageRoot, executable: settings.uploader.trim(),
+              args: settings.uploaderArgs.split(/\r?\n/).map(arg => arg.trim()).filter(Boolean),
+            })
+            amend(doc.id, item => ({ text: updateImageSources(item.text, replacements) }))
+            notify('已更新 ' + replacements.length + ' 张图片的地址')
+          })
+        }}>上传并更新地址</button></footer>
+    </Modal>}
     {dialog?.type === 'recovery' && <Recovery drafts={workspace.recoverable} close={closeDialog} recover={workspace.recover} notify={notify}
       discard={draft => setDialog({ type: 'discard-recovery', draft })}/>}
     {dialog?.type === 'discard-recovery' && <Modal title="删除恢复草稿？" onClose={closeDialog}>
