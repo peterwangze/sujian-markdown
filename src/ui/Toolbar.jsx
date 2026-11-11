@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Bold, Italic, List, ListOrdered, Table2, Link, Search, Settings2, ChevronDown,
   PanelLeft, MoreHorizontal, FileText, FolderOpen, Save, FileOutput, FileInput, Image,
   Code, Quote, Minus, SquareCheck, Strikethrough, Sigma, Network, Focus, Maximize, Undo2, Redo2, Keyboard,
-  Columns2, BookOpen, Copy, Pin, Printer, Moon } from 'lucide-react'
+  Columns2, BookOpen, Copy, Pin, Printer, Moon, FileDiff, ClipboardCheck } from 'lucide-react'
 import { IconButton } from './Controls.jsx'
 
 function Menu({ items, icon, label, children, className = '' }) {
@@ -34,7 +34,7 @@ function Menu({ items, icon, label, children, className = '' }) {
   </div>
 }
 
-export function Toolbar({ active, mode, setMode, action, command, settings, native }) {
+export function Toolbar({ active, mode, setMode, action, command, settings, native, canUndoReview }) {
   const act = (name, icon, key, disabled = false) => ({ name, icon, run: () => action(key), disabled })
   const fmt = (name, icon, key) => ({ name, icon, run: () => command(key), disabled: !active })
   const icon = (Icon, label, key) => <IconButton icon={Icon} label={label} disabled={!active}
@@ -72,6 +72,9 @@ export function Toolbar({ active, mode, setMode, action, command, settings, nati
         act('新建窗口', FileText, 'new-window', !native),
         act('打开文件夹', FolderOpen, 'open-folder', !native), act('快速打开', Search, 'quick-open'),
         act('保存', Save, 'save', !active), act('另存为', Save, 'save-as', !active),
+        act('审阅修订稿', FileDiff, 'review', !active), act('撤销本次审阅', Undo2, 'undo-review', !canUndoReview),
+        act('从模板创建文档', FileText, 'workflow-templates'), act('检查规格与验收', ClipboardCheck, 'spec-check', !active),
+        act('插入来源链接', Link, 'source-link', !active?.path), {},
         act('导入文档', FileInput, 'import', !native), act('导出文档', FileOutput, 'export', !active),
         act('打印', Printer, 'print', !active), {},
         act('阅读模式', BookOpen, 'view-read', !active), act('分栏预览', Columns2, 'view-split', !active),

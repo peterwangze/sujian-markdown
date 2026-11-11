@@ -84,14 +84,31 @@ function pathKey(filePath) {
   return process.platform === 'win32' ? absolute.toLowerCase() : absolute;
 }
 
-async function readFile(filePath) {
-  const resolved = await fs.realpath(path.resolve(filePath));
+async function readBounded(handle, size, maxBytes) {
+  const tooLarge = () => Object.assign(new Error('The document exceeds the read limit.'), { code: 'ERR_DOCUMENT_TOO_LARGE' });
+  if (size > maxBytes) throw tooLarge();
+  const buffer = Buffer.allocUnsafe(maxBytes + 1);
+  let offset = 0;
+  while (offset < buffer.length) {
+    const { bytesRead } = await handle.read(buffer, offset, buffer.length - offset, offset);
+    if (!bytesRead) return buffer.subarray(0, offset);
+    offset += bytesRead;
+  }
+  throw tooLarge();
+}
+
+async function readFile(filePath, { maxBytes, requireCanonical = false } = {}) {
+  const absolute = path.resolve(filePath);
+  const resolved = await fs.realpath(absolute);
+  if (requireCanonical && pathKey(resolved) !== pathKey(absolute)) {
+    throw Object.assign(new Error('The document path changed.'), { code: 'ERR_DOCUMENT_PATH_CHANGED' });
+  }
   if (!(await fs.stat(resolved)).isFile()) throw new Error('The selected path is not a file.');
   const handle = await fs.open(resolved, 'r');
   try {
     const stat = await handle.stat();
     if (!stat.isFile()) throw new Error('The selected path is not a file.');
-    const bytes = await handle.readFile();
+    const bytes = maxBytes === undefined ? await handle.readFile() : await readBounded(handle, stat.size, maxBytes);
     return { path: resolved, bytes, hash: digest(bytes), stat };
   } finally {
     await handle.close();
@@ -176,8 +193,8 @@ function serialized(filePath, task) {
   });
 }
 
-async function getDocument(filePath) {
-  return snapshot(await readFile(filePath));
+async function getDocument(filePath, options) {
+  return snapshot(await readFile(filePath, options));
 }
 
 async function saveDocument({ path: filePath, text, expectedHash, force = false }) {

@@ -104,8 +104,10 @@ export function useWorkspace(notify, beforeClose) {
     }
     const doc = fromDisk(await desktop.openPath(path))
     append([doc])
-    return doc
+    return stateRef.current.docs.find(item => fileKey(item.path) === fileKey(doc.path)) ?? doc
   }, [append, select])
+
+  const getDocument = useCallback(id => stateRef.current.docs.find(doc => doc.id === id), [])
 
   const applyDiskChange = useCallback((path, document) => {
     const doc = stateRef.current.docs.find(item => fileKey(item.path) === fileKey(path))
@@ -113,6 +115,31 @@ export function useWorkspace(notify, beforeClose) {
     if (isDirty(doc) || !document) amend(doc.id, { conflict: { document } })
     else amend(doc.id, { ...document, savedText: document.text, conflict: null })
   }, [amend])
+
+  const replaceReviewedText = useCallback(async (id, { expectedText, expectedPath, text, undo = false }) => {
+    const check = () => {
+      const doc = getDocument(id)
+      if (!doc || doc.path !== expectedPath || doc.text !== expectedText) {
+        throw new Error('当前文档已变动，请重新核对修订。')
+      }
+      if (doc.conflict || closing.current.has(id) || pendingSaves.current.has(id)) {
+        throw new Error('文档正在保存、关闭或存在磁盘冲突，请处理后再试。')
+      }
+      return doc
+    }
+    const before = check()
+    if (before.path && desktop.readReviewSnapshot) {
+      const disk = await desktop.readReviewSnapshot(before.path)
+      const current = check()
+      if (!disk || disk.hash !== current.hash) {
+        applyDiskChange(current.path, disk)
+        throw new Error('磁盘上的文档已变动，请重新核对修订。')
+      }
+    }
+    if (expectedText === text) return false
+    amend(id, { text, reviewUndo: undo ? null : { before: expectedText, after: text } })
+    return true
+  }, [amend, applyDiskChange, getDocument])
 
   const runDraft = useCallback((id, work) => {
     const queue = (draftTasks.current.get(id) ?? Promise.resolve()).catch(() => {}).then(work)
@@ -195,7 +222,7 @@ export function useWorkspace(notify, beforeClose) {
       closing.current.delete(id)
       throw error
     }
-    closed.current.push({ ...current, text: current.savedText, conflict: null })
+    closed.current.push({ ...current, text: current.savedText, conflict: null, reviewUndo: null })
     if (closed.current.length > 30) closed.current.shift()
     commit(previous => {
       const index = previous.docs.findIndex(item => item.id === id)
@@ -337,7 +364,7 @@ export function useWorkspace(notify, beforeClose) {
 
   return {
     docs: state.docs, active: state.docs.find(doc => doc.id === state.activeId), settings, ready, saving, recoverable,
-    select, configure, add, append, amend, close, reopen, openFiles, openPath, save, resolveConflict, recover,
+    select, configure, add, append, amend, close, reopen, openFiles, openPath, getDocument, replaceReviewedText, save, resolveConflict, recover,
     removeRecovery: async id => { await discardDraft(id); setRecoverable(items => items.filter(item => item.id !== id)) },
   }
 }

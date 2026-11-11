@@ -125,7 +125,7 @@ function graphvizWorker() {
 
 let diagramQueue = Promise.resolve();
 
-async function renderDiagrams(root, theme) {
+async function renderDiagrams(root, theme, embeddedMediaOnly = false) {
   const languages = ['mermaid', 'flowchart', 'flow', 'graphviz', 'sequence'];
   const diagrams = [...root.querySelectorAll(languages.map((language) => `div.language-${language}, pre > code.language-${language}`).join(', '))];
   if (!diagrams.length) return;
@@ -143,22 +143,28 @@ async function renderDiagrams(root, theme) {
         host.dataset.sourceIndex = String(sourceIndex);
         host.dataset.diagramLanguage = language;
         try {
+          const source = code.textContent;
+          if (embeddedMediaOnly && /@\s*\{|%%\s*\{|^\s*---\s*$|(?:https?|file|sujian-asset):|\/\/|<\s*(?:img|image|style)\b|\b(?:url|image-set)\s*\(|\b(?:image|shapefile|href|stylesheet)\s*=/im.test(source)) {
+            throw new Error('审阅预览已省略含媒体或自定义配置的图表。可在源码差异中查看。');
+          }
           let svg;
           if (language === 'mermaid' || language === 'sequence') {
             await loadVendorScript('vditorMermaidScript', 'mermaid/mermaid.min.js');
             window.mermaid.initialize({ startOnLoad: false, securityLevel: 'strict', htmlLabels: false, theme: theme === 'dark' ? 'dark' : 'default' });
-            const definition = language === 'sequence' ? convertSequence(code.textContent) : code.textContent;
+            const definition = language === 'sequence' ? convertSequence(source) : source;
             ({ svg } = await window.mermaid.render(`diagram-${crypto.randomUUID()}`, definition));
           } else if (language === 'flowchart' || language === 'flow') {
             await loadVendorScript('vditorFlowchartScript', 'flowchart.js/flowchart.min.js');
-            window.flowchart.parse(code.textContent).drawSVG(host);
+            window.flowchart.parse(source).drawSVG(host);
             svg = host.innerHTML;
           } else if (language === 'graphviz') {
             await loadVendorScript('vditorGraphVizScript', 'graphviz/viz.js');
             worker ??= graphvizWorker();
-            svg = (await new window.Viz({ worker }).renderSVGElement(code.textContent)).outerHTML;
+            svg = (await new window.Viz({ worker }).renderSVGElement(source)).outerHTML;
           }
-          host.replaceChildren(sanitizedFragment(svg, 'svg'));
+          const fragment = sanitizedFragment(svg, 'svg');
+          if (embeddedMediaOnly) restrictReviewResources(fragment);
+          host.replaceChildren(fragment);
           block.replaceWith(host);
         } catch (error) {
           renderError(block, error);
@@ -257,13 +263,33 @@ async function highlightCode(root, theme, preview) {
   }
 }
 
-export async function renderPreview(markdown, { resolveImage, theme = 'light', inlineRemote = false, allowRemoteMedia = true, preview = true } = {}) {
+function restrictReviewResources(root) {
+  for (const node of root.querySelectorAll('[href], [xlink\\:href]')) {
+    for (const attribute of ['href', 'xlink:href']) {
+      if (node.localName === 'a' || !node.getAttribute(attribute)?.startsWith('#')) node.removeAttribute(attribute);
+    }
+  }
+  for (const node of root.querySelectorAll('[src], [srcset], [poster], [autoplay]')) {
+    node.removeAttribute('autoplay');
+    node.removeAttribute('srcset');
+    for (const attribute of ['src', 'poster']) {
+      const address = node.getAttribute(attribute);
+      if (address && !/^data:image\//i.test(address)) node.removeAttribute(attribute);
+    }
+  }
+}
+
+export async function renderPreview(markdown, {
+  resolveImage, theme = 'light', inlineRemote = false, allowRemoteMedia = true, preview = true, embeddedMediaOnly = false,
+} = {}) {
   await loadVendorScript('vditorLuteScript', 'lute/lute.min.js');
   const html = await Vditor.md2html(markdown, { cdn: vendorRoot, markdown: markdownOptions });
   const root = document.createElement('article');
   root.className = 'vditor-reset';
   const fragment = sanitizedFragment(html);
-  if (!allowRemoteMedia) {
+  if (embeddedMediaOnly) {
+    restrictReviewResources(fragment);
+  } else if (!allowRemoteMedia) {
     for (const media of fragment.querySelectorAll('img[src], audio[src], video[src], source[src], video[poster]')) {
       for (const attribute of ['src', 'poster']) {
         if (/^(?:https?:|\/\/)/i.test(media.getAttribute(attribute) ?? '')) media.removeAttribute(attribute);
@@ -277,8 +303,9 @@ export async function renderPreview(markdown, { resolveImage, theme = 'light', i
     link.append(...item.childNodes);
     item.replaceWith(link);
   }
-  await Promise.all([renderMath(root), renderDiagrams(root, theme), resolveAssets(root, resolveImage, inlineRemote)]);
+  await Promise.all([renderMath(root), renderDiagrams(root, theme, embeddedMediaOnly), resolveAssets(root, embeddedMediaOnly ? undefined : resolveImage, inlineRemote)]);
   await highlightCode(root, theme, preview);
+  if (embeddedMediaOnly) restrictReviewResources(root);
   return root;
 }
 

@@ -1,0 +1,211 @@
+.modal.review-modal {
+  --removed-ink: #8d2d1e;
+  --added-ink: #25604c;
+  width: min(1040px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
+}
+
+:root[data-theme="dark"] .review-modal {
+  --removed-ink: #ffb39d;
+  --added-ink: #8dd6b3;
+}
+
+.review-modal .modal-inner {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: calc(100dvh - 34px);
+}
+
+.review-modal .modal-inner > header { margin: 0; }
+
+.review-context, .review-options, .review-origin-row, .review-baseline, .review-git, .review-input-actions,
+.review-change-heading, .review-decisions, .review-bulk, .review-pager, .review-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.review-context, .review-options, .review-origin-row { justify-content: space-between; }
+
+.review-document, .review-origin {
+  margin: 0;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.review-document { font-weight: 600; }
+.review-baseline > .review-origin { margin-right: auto; }
+
+.review-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--chrome);
+}
+
+.review-toggle button, .review-input-actions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 9px;
+}
+
+.review-toggle button[aria-pressed="true"], .review-decisions button[aria-pressed="true"] {
+  color: var(--accent-ink);
+  background: var(--selected);
+  font-weight: 600;
+}
+
+.review-input { display: grid; gap: 8px; }
+
+.review-input textarea {
+  min-height: 160px;
+  max-height: 48dvh;
+  height: 32dvh;
+  width: 100%;
+  resize: vertical;
+  font-family: var(--mono);
+  background: var(--canvas);
+}
+
+.review-input-actions { justify-content: end; }
+.review-git input { width: min(240px, 100%); font-family: var(--mono); }
+
+.review-origin-row, .review-git {
+  padding-block: 8px;
+  border-block: 1px solid var(--faint-border);
+}
+
+.review-disk-conflict {
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 7px 9px;
+  color: var(--accent-ink);
+}
+
+.review-disk-conflict summary { cursor: pointer; }
+.review-disk-conflict .review-source-grid { margin-top: 7px; }
+.review-disk-conflict pre { max-height: 110px; }
+
+.review-changes {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  min-height: 0;
+  overflow: auto;
+  list-style: none;
+}
+
+.review-change {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--canvas);
+}
+
+.review-change.is-conflict { border-color: var(--accent); }
+.review-change-heading { padding: 7px 9px; }
+.review-change-heading h3, .review-rendered-pane h3 { margin: 0; font-size: 13px; font-weight: 650; }
+.review-status { color: var(--muted); }
+.review-change.is-conflict .review-status { color: var(--accent-ink); }
+.review-decisions { margin-left: auto; }
+.review-decisions button, .review-bulk button, .review-pager button { padding: 4px 7px; }
+
+.review-source-grid, .review-preview-grid {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  gap: 1px;
+  background: var(--border);
+  border-top: 1px solid var(--border);
+}
+
+.review-source { min-width: 0; background: var(--surface); color: var(--ink); }
+
+.review-source h4 {
+  margin: 0;
+  padding: 5px 9px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.review-source.is-before h4 { color: var(--removed-ink); }
+.review-source.is-after h4 { color: var(--added-ink); }
+.review-source.is-before { background: color-mix(in srgb, var(--surface) 94%, var(--removed-ink)); }
+.review-source.is-after { background: color-mix(in srgb, var(--surface) 94%, var(--added-ink)); }
+
+.review-source pre {
+  max-height: 200px;
+  min-height: 2em;
+  margin: 0;
+  padding: 3px 9px 9px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: 12px/1.5 var(--mono);
+}
+
+.review-source pre:focus-visible { outline-offset: -2px; }
+.review-empty-source, .review-notice { margin: 0; padding: 8px 9px; color: var(--muted); }
+.review-pager { justify-content: center; color: var(--muted); }
+
+.review-preview-choice { display: inline-flex; align-items: center; gap: 4px; }
+
+.review-preview-grid {
+  min-height: 120px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+}
+
+.review-rendered-pane { min-width: 0; background: var(--canvas); }
+
+.review-rendered-pane > h3 {
+  position: sticky;
+  top: 0;
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--border);
+  background: var(--chrome);
+  z-index: 1;
+}
+
+.review-rendered-pane > p, .review-rendered-content { margin: 0; padding: 10px; }
+
+.review-rendered-content .vditor-reset {
+  margin: 0;
+  background: transparent;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+  font-family: var(--serif);
+}
+
+.review-rendered-content .vditor-reset table { color: var(--ink); }
+.review-rendered-content .vditor-reset tr { border-color: var(--border); background: var(--canvas); }
+.review-rendered-content .vditor-reset tr:nth-child(2n) { background: var(--table-head); }
+.review-rendered-content .vditor-reset :is(th, td) { border-color: var(--border); }
+.review-rendered-content .vditor-reset blockquote { color: var(--ink); border-color: var(--accent); background: var(--quote); }
+.review-rendered-content .vditor-reset code:not(.hljs) { color: var(--ink); background: var(--chrome); font-family: var(--mono); }
+.review-rendered-content .vditor-reset a { color: var(--accent-ink); text-decoration: underline; }
+
+.review-error { margin: 0; color: var(--accent-ink); overflow-wrap: anywhere; }
+
+.review-modal footer.review-footer {
+  padding-top: 10px;
+  border-top: 1px solid var(--faint-border);
+  justify-content: end;
+}
+
+.review-footer p { margin: 0 auto 0 0; color: var(--muted); }
+.review-footer > span { color: var(--muted); }
+
+@media (max-width: 760px) {
+  .review-source-grid, .review-preview-grid { grid-auto-flow: row; }
+  .review-rendered-pane > h3 { position: static; }
+}

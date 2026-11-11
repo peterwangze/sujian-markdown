@@ -80,6 +80,7 @@ function createWatcher({ knownDocuments, notify }) {
 
   return {
     setPaths,
+    hasPath: (filePath) => files.has(pathKey(filePath)),
     refresh() {
       for (const entry of files.values()) void check(entry, true);
     },

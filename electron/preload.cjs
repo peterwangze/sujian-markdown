@@ -36,6 +36,10 @@ contextBridge.exposeInMainWorld('sujian', {
   openFiles: invoke('open-files-dialog'),
   openPath: invoke('open-path'),
   initialDocuments: invoke('initial-documents'),
+  initialCommand: invoke('initial-command'),
+  chooseReviewCandidate: invoke('choose-review-candidate'),
+  readReviewSnapshot: invoke('read-review-snapshot'),
+  readGitBaseline: invoke('read-git-baseline'),
   openFolder: invoke('open-folder'),
   listDirectory: invoke('list-directory'),
   findDocuments: invoke('find-documents'),
@@ -78,4 +82,5 @@ contextBridge.exposeInMainWorld('sujian', {
   onMenuAction: subscribe('menu-action'),
   onExternalChange: subscribe('external-change'),
   onOpenFiles: subscribe('open-files'),
+  onCommand: subscribe('command'),
 });

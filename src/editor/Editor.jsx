@@ -107,6 +107,32 @@ function restoreCaret(root, caret) {
   window.getSelection()?.setBaseAndExtent(anchor, offset(anchor, caret.anchor), focus, offset(focus, caret.focus));
 }
 
+function ensureLinkCaret(root, remembered) {
+  const selection = window.getSelection();
+  if (!selection) return false;
+  const usable = (node) => {
+    if (!node || node === root || !root.contains(node)) return false;
+    const element = node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement;
+    return !element?.closest('.vditor-ir__marker, .vditor-ir__preview, [contenteditable="false"]');
+  };
+  if (usable(selection.anchorNode) && usable(selection.focusNode)) return true;
+  restoreCaret(root, remembered);
+  if (usable(selection.anchorNode) && usable(selection.focusNode)) return true;
+
+  let paragraph = [...root.children].findLast((child) => child.matches('p[data-block="0"]'));
+  if (!paragraph) {
+    paragraph = document.createElement('p');
+    paragraph.dataset.block = '0';
+    root.append(paragraph);
+  }
+  const range = document.createRange();
+  range.selectNodeContents(paragraph);
+  range.collapse(false);
+  selection.removeAllRanges();
+  selection.addRange(range);
+  return true;
+}
+
 function updateUnderlines(root) {
   if (!CSS.highlights || typeof Highlight !== 'function') return;
   const openings = [];
@@ -510,6 +536,7 @@ export function Editor({
     if (!instance) return false;
     const toolbar = instance.vditor.toolbar.elements;
     instance.focus();
+    if (name === 'link' && !ensureLinkCaret(instance.vditor.ir.element, liveCaret.current)) return false;
     if (nativeCommands.includes(name)) {
       toolbar[name]?.firstElementChild?.click();
     } else if (name === 'heading' && Number(payload?.level ?? payload ?? 1) > 0) {

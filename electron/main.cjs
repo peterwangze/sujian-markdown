@@ -11,6 +11,7 @@ const { createFileOperations } = require('./file-operations.cjs');
 const { createStorage } = require('./storage.cjs');
 const { createWatcher } = require('./watcher.cjs');
 const { findDocuments, listDirectory, searchDirectory } = require('./workspace.cjs');
+const { applicationArguments, materializeCommand, parseCommand, readCandidate, readGitBaseline, readReviewSnapshot } = require('./review.cjs');
 
 const appScheme = 'sujian-app';
 const smokeTest = process.argv.includes('--smoke-test');
@@ -22,6 +23,8 @@ const filters = [{ name: 'Markdown / Text', extensions }];
 const states = new Map();
 const knownDocuments = new Map();
 const pendingPaths = [];
+const pendingCommands = [];
+const launchArguments = applicationArguments(process.argv, { defaultApp: process.defaultApp, appPath: app.getAppPath() });
 let quitting = false;
 let servicesReady = false;
 let remoteMediaAllowed = false;
@@ -100,25 +103,70 @@ function commandPaths(arguments_, directory = process.cwd()) {
   return arguments_.filter((argument) => !argument.startsWith('-') && documentExtension.test(argument)).map((argument) => path.resolve(directory, argument));
 }
 
+function targetWindowState() {
+  const window = BrowserWindow.getFocusedWindow();
+  return states.get(window?.id) ?? states.values().next().value;
+}
+
+function focusWindow(state) {
+  if (state.window.isMinimized()) state.window.restore();
+  state.window.focus();
+}
+
 async function deliverPaths(paths) {
   if (!paths.length) return;
   if (!servicesReady) {
     pendingPaths.push(...paths);
     return;
   }
-  const window = BrowserWindow.getFocusedWindow();
-  const state = states.get(window?.id) ?? states.values().next().value;
+  const state = targetWindowState();
   if (!state) {
     await createWindow(paths);
     return;
   }
-  if (state.window.isMinimized()) state.window.restore();
-  state.window.focus();
+  focusWindow(state);
   if (!state.consumedInitialPaths) state.initialPaths.push(...paths);
   else {
     const documents = await openPaths(paths);
     if (documents.length && !state.window.isDestroyed()) state.window.webContents.send('sujian:open-files', documents);
   }
+}
+
+function reportCommandError(error) {
+  console.error(error.message);
+  dialog.showErrorBox('无法打开审阅请求', error.message);
+}
+
+async function flushCommands(state) {
+  if (!state.commandsReady || state.deliveringCommands) return;
+  state.deliveringCommands = true;
+  try {
+    while (state.commands.length && !state.window.isDestroyed()) {
+      try {
+        const command = await materializeCommand(state.commands.shift());
+        if (!state.window.isDestroyed()) state.window.webContents.send('sujian:command', command);
+      } catch (error) {
+        reportCommandError(error);
+      }
+    }
+  } finally {
+    state.deliveringCommands = false;
+  }
+}
+
+async function deliverCommand(command) {
+  if (!servicesReady) {
+    pendingCommands.push(command);
+    return;
+  }
+  const state = targetWindowState();
+  if (!state) {
+    await createWindow([command.path], [command]);
+    return;
+  }
+  focusWindow(state);
+  state.commands.push(command);
+  await flushCommands(state);
 }
 
 function requestClose(window, event) {
@@ -130,7 +178,7 @@ function requestClose(window, event) {
   window.webContents.send('sujian:before-close');
 }
 
-async function createWindow(initialPaths = []) {
+async function createWindow(initialPaths = [], commands = []) {
   const icon = app.isPackaged ? path.join(process.resourcesPath, 'icon.png') : path.join(app.getAppPath(), 'build', 'icon.png');
   const window = new BrowserWindow({
     width: 1320, height: 900, minWidth: 800, minHeight: 560,
@@ -145,7 +193,7 @@ async function createWindow(initialPaths = []) {
       sandbox: true, nodeIntegration: false, spellcheck: true,
     },
   });
-  const state = { window, initialPaths: [...initialPaths] };
+  const state = { window, initialPaths: [...initialPaths], commands: [...commands] };
   state.watcher = createWatcher({ knownDocuments, notify: (update) => {
     if (!window.isDestroyed()) window.webContents.send('sujian:external-change', update);
   } });
@@ -212,7 +260,8 @@ function buildMenu(hotkeys = {}) {
       { role: 'undo' }, { role: 'redo' }, divider, { role: 'cut' }, { role: 'copy' },
       { role: 'paste' }, { role: 'pasteAndMatchStyle' }, { role: 'selectAll' }, divider,
       action('查找', 'find', 'CmdOrCtrl+F'), action('替换', 'replace', isMac ? 'Cmd+Alt+F' : 'Ctrl+H'),
-      action('搜索文件夹', 'search-folder', 'CmdOrCtrl+Shift+F'),
+      action('搜索文件夹', 'search-folder', 'CmdOrCtrl+Shift+F'), divider,
+      action('审阅修订稿…', 'review'),
     ] },
     { label: '视图', submenu: [
       action('实时编辑', 'view-live'), action('源码编辑', 'view-source', 'CmdOrCtrl+/'), action('阅读', 'view-read'), divider,
@@ -249,6 +298,33 @@ function installIpc({ assets, conversion, storage, operations }) {
   handle('initial-documents', async (state) => {
     state.consumedInitialPaths = true;
     return openPaths(state.initialPaths.splice(0));
+  });
+  handle('initial-command', async (state) => {
+    if (state.initialCommandConsumed) return null;
+    state.initialCommandConsumed = true;
+    try {
+      return await materializeCommand(state.commands.shift());
+    } finally {
+      state.commandsReady = true;
+      setImmediate(() => { void flushCommands(state); });
+    }
+  });
+  handle('choose-review-candidate', async ({ window }, purpose) => {
+    const selected = await dialog.showOpenDialog(window, {
+      title: purpose === 'baseline' ? '选择旧底稿' : '选择修订稿', properties: ['openFile'], filters,
+    });
+    return selected.canceled || !selected.filePaths.length ? null : readCandidate(selected.filePaths[0]);
+  });
+  const requireOpenDocument = (state, filePath) => {
+    if (typeof filePath !== 'string' || !state.watcher.hasPath(filePath)) throw new Error('请先在当前窗口打开该文档。');
+  };
+  handle('read-review-snapshot', (state, filePath) => {
+    requireOpenDocument(state, filePath);
+    return readReviewSnapshot(filePath);
+  });
+  handle('read-git-baseline', (state, options) => {
+    requireOpenDocument(state, options?.documentPath);
+    return readGitBaseline(options);
   });
   handle('save-file', async (state, options) => {
     let filePath = options.path;
@@ -340,7 +416,7 @@ function installIpc({ assets, conversion, storage, operations }) {
   });
 }
 
-async function launch() {
+async function launch(initialCommand) {
   const userDataPath = app.getPath('userData');
   const assets = createAssets({ userDataPath, knownDocuments });
   const conversion = createConversion({ assets, userDataPath });
@@ -358,9 +434,10 @@ async function launch() {
   const timeout = smokeTest ? setTimeout(() => { console.error('Sujian desktop smoke test timed out.'); app.exit(1); }, 20000) : null;
   let exitCode;
   try {
-    const offset = process.defaultApp ? 2 : 1;
-    const initial = [...pendingPaths.splice(0), ...commandPaths(process.argv.slice(offset))];
-    const window = await createWindow(initial);
+    const initial = [...pendingPaths.splice(0), ...(initialCommand ? [initialCommand.path] : commandPaths(launchArguments))];
+    const commands = pendingCommands.splice(0);
+    if (initialCommand) commands.unshift(initialCommand);
+    const window = await createWindow(initial, commands);
     if (smokeTest) {
       const ready = await window.webContents.executeJavaScript(`new Promise(resolve => {
         const start = Date.now();
@@ -398,9 +475,30 @@ async function launch() {
   if (exitCode !== undefined) app.exit(exitCode);
 }
 
-if (!smokeTest && !app.requestSingleInstanceLock()) app.quit();
+let initialCommand;
+let invalidCommand;
+try {
+  if (!smokeTest) initialCommand = parseCommand(launchArguments);
+} catch (error) {
+  invalidCommand = error;
+}
+
+if (invalidCommand) {
+  console.error(invalidCommand.message);
+  app.exit(2);
+} else if (!smokeTest && !app.requestSingleInstanceLock({ sujianArgs: launchArguments })) app.quit();
 else {
-  app.on('second-instance', (_event, arguments_, directory) => void deliverPaths(commandPaths(arguments_, directory)));
+  app.on('second-instance', (_event, arguments_, directory, data) => {
+    try {
+      const sent = data?.sujianArgs;
+      const exactArgs = Array.isArray(sent) && sent.every((argument) => typeof argument === 'string') ? sent : null;
+      const command = exactArgs && parseCommand(exactArgs, directory);
+      const delivery = command ? deliverCommand(command) : deliverPaths(commandPaths(exactArgs ?? arguments_, directory));
+      void delivery.catch(reportCommandError);
+    } catch (error) {
+      reportCommandError(error);
+    }
+  });
   app.on('open-file', (event, filePath) => {
     event.preventDefault();
     void deliverPaths(commandPaths([filePath]));
@@ -417,5 +515,5 @@ else {
   app.on('window-all-closed', () => {
     if (!smokeTest && process.platform !== 'darwin') app.quit();
   });
-  void app.whenReady().then(launch);
+  void app.whenReady().then(() => launch(initialCommand));
 }

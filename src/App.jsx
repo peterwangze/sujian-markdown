@@ -1,4 +1,4 @@
-import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import { FileText, Plus, CircleCheck, AlertTriangle, FolderOpen, ChevronDown, BookOpen } from 'lucide-react'
 import { Editor, renderDocument } from './editor/index.js'
 import { IconButton, Modal, TabStrip } from './ui/Controls.jsx'
@@ -8,6 +8,10 @@ import { ExportDialog, FindBar, FolderSearch, QuickOpen, Recovery, Settings, sho
 import { desktop, native } from './workspace/desktop.js'
 import { headings, localImageSources, MAX_LIVE_LENGTH, slug, updateImageSources, wordCount } from './workspace/text.js'
 import { isDirty, useWorkspace } from './workspace/useWorkspace.js'
+import { SpecCheckDialog, SourceLinkDialog, TemplatesDialog } from './review/WorkflowDialogs.jsx'
+import { sourceLine, workflowTemplates } from './review/workflows.js'
+
+const ReviewDialog = lazy(() => import('./review/ReviewDialog.jsx'))
 
 const nativeShortcuts = new Set(['new-file', 'open-files', 'open-folder', 'save', 'save-as', 'close-tab', 'reopen-tab', 'quick-open', 'find', 'replace', 'search-folder', 'view-source', 'toggle-sidebar', 'toggle-focus', 'toggle-typewriter', 'export', 'settings'])
 const visualExports = new Set(['pdf', 'html', 'html-plain', 'png', 'docx', 'epub', 'print'])
@@ -57,6 +61,7 @@ export default function App() {
   const { docs, active, settings, configure, amend, ready } = workspace
   const [sidebar, setSidebar] = useState('files')
   const [dialog, setDialog] = useState(null)
+  const [commandQueue, setCommandQueue] = useState([])
   const [findState, setFindState] = useState(null)
   const [selection, setSelection] = useState('')
   const [refresh, setRefresh] = useState(0)
@@ -66,6 +71,8 @@ export default function App() {
   activeId.current = active?.id
   const requestedJump = useRef(null)
   const mode = active?.mode ?? settings.mode
+  const reviewDoc = dialog?.type === 'review' ? docs.find(doc => doc.id === dialog.docId) : null
+  const canUndoReview = !!active?.reviewUndo && active.text === active.reviewUndo.after
   const dark = settings.theme === 'dark' || (settings.theme === 'system' && systemDark)
   const renderTheme = dark ? 'dark' : 'light'
   const deferredText = useDeferredValue(active?.text ?? '')
@@ -73,6 +80,12 @@ export default function App() {
   const words = useMemo(() => wordCount(deferredText), [deferredText])
   const run = useCallback(work => Promise.resolve().then(work).catch(error => { notify(error.message ?? String(error), true) }), [notify])
   const closeDialog = () => setDialog(null)
+
+  useEffect(() => {
+    if ((dialog?.type === 'review' && !reviewDoc) || (dialog?.type === 'source-link' && active?.id !== dialog.docId)) {
+      setDialog(previous => previous === dialog ? null : previous)
+    }
+  }, [active?.id, dialog, reviewDoc])
 
   useEffect(() => {
     const media = matchMedia('(prefers-color-scheme: dark)')
@@ -92,12 +105,14 @@ export default function App() {
   useEffect(() => {
     document.title = active ? active.name + ' — 素笺' : '素笺'
     setSelection('')
+  }, [active?.id, active?.name])
+  useEffect(() => {
     if (requestedJump.current?.id === active?.id && active) {
       const { line } = requestedJump.current
       requestedJump.current = null
       requestAnimationFrame(() => editor.current?.jump(line))
     }
-  }, [active?.id, active?.name])
+  }, [active?.id, mode])
 
   function setMode(next) {
     if (!active) return
@@ -148,6 +163,17 @@ export default function App() {
     else requestedJump.current = { id: doc.id, line }
   }
 
+  function jumpToSource(line, doc) {
+    if (!doc || !line) return
+    const targetMode = workspace.getDocument(doc.id)?.mode ?? settings.mode
+    if (doc.id === activeId.current && targetMode === 'source') {
+      editor.current?.jump(line)
+    } else {
+      requestedJump.current = { id: doc.id, line }
+      amend(doc.id, { mode: 'source' })
+    }
+  }
+
   function followLink(href) {
     return run(async () => {
       if (/^(?:https?:|mailto:|\/\/)/i.test(href)) {
@@ -159,7 +185,10 @@ export default function App() {
       if (!target || !native) return
       flushEditor()
       const next = await workspace.openPath(target)
-      if (anchor) jump(headings(next.text).find(item => slug(item.title) === slug(anchor))?.line, next)
+      if (!anchor) return
+      const heading = headings(next.text).find(item => slug(item.title) === slug(anchor))
+      if (heading) jump(heading.line, next)
+      else jumpToSource(sourceLine(anchor), next)
     })
   }
 
@@ -230,6 +259,89 @@ export default function App() {
     return true
   }
 
+  function openReview(doc, initialCandidate) {
+    if (!doc) return
+    const currentText = activeId.current === doc.id ? flushEditor() : undefined
+    setDialog({
+      type: 'review', docId: doc.id, baseText: currentText ?? doc.text,
+      expectedPath: doc.path, initialCandidate, requestId: crypto.randomUUID(),
+    })
+  }
+
+  async function applyReview({ expectedText, text }) {
+    if (activeId.current === dialog.docId) flushEditor()
+    const changed = await workspace.replaceReviewedText(dialog.docId, {
+      expectedText, expectedPath: dialog.expectedPath, text,
+    })
+    if (changed) {
+      setDialog(previous => previous?.requestId === dialog.requestId ? null : previous)
+      notify('已采纳修订。可在「文档与视图」撤销本次审阅。')
+    }
+    return changed
+  }
+
+  function undoReview() {
+    if (!active?.reviewUndo) return
+    flushEditor()
+    const { before, after } = active.reviewUndo
+    run(async () => {
+      await workspace.replaceReviewedText(active.id, { expectedText: after, expectedPath: active.path, text: before, undo: true })
+      notify('已撤销本次审阅')
+    })
+  }
+
+  const commandHandler = useRef(null)
+  const handlingCommand = useRef(false)
+  commandHandler.current = async request => {
+    if (!request) return
+    flushEditor()
+    const doc = await workspace.openPath(request.path)
+    if (request.kind === 'review') openReview(doc, request.candidate)
+    else if (request.line) jumpToSource(request.line, doc)
+  }
+
+  useEffect(() => {
+    if (!ready || !desktop.initialCommand) return
+    let live = true
+    let initialized = false
+    const incoming = []
+    const enqueue = requests => {
+      const commands = requests.filter(Boolean)
+      if (live && commands.length) setCommandQueue(previous => [...previous, ...commands])
+    }
+    const unsubscribe = desktop.onCommand?.(request => {
+      if (initialized) enqueue([request])
+      else incoming.push(request)
+    })
+    const initialize = async () => {
+      let first
+      try { first = await desktop.initialCommand() } catch (error) {
+        if (live) notify(error.message, true)
+      }
+      initialized = true
+      enqueue([first, ...incoming])
+      incoming.length = 0
+    }
+    void initialize()
+    return () => { live = false; unsubscribe?.() }
+  }, [ready, notify])
+
+  useEffect(() => {
+    if (dialog || !commandQueue.length || handlingCommand.current) return
+    handlingCommand.current = true
+    const processCommand = async () => {
+      try {
+        await commandHandler.current(commandQueue[0])
+      } catch (error) {
+        notify(error.message, true)
+      } finally {
+        handlingCommand.current = false
+        setCommandQueue(previous => previous.slice(1))
+      }
+    }
+    void processCommand()
+  }, [commandQueue, dialog, notify])
+
   function action(key) {
     switch (key) {
       case 'new-file': flushEditor(); workspace.add(); break
@@ -237,6 +349,15 @@ export default function App() {
       case 'open-files': flushEditor(); run(workspace.openFiles); break
       case 'open-folder': openFolder(); break
       case 'save': case 'save-as': flushEditor(); if (active) run(() => workspace.save(active.id, { saveAs: key === 'save-as' })); break
+      case 'review': openReview(active); break
+      case 'undo-review': undoReview(); break
+      case 'workflow-templates': setDialog({ type: 'workflow-templates' }); break
+      case 'spec-check': flushEditor(); setDialog({ type: 'spec-check' }); break
+      case 'source-link':
+        if (mode === 'read') notify('切换到编辑模式后即可插入来源。')
+        else if (active?.path) setDialog({ type: 'source-link', docId: active.id })
+        else notify('请先保存当前文档，再插入相对来源链接。')
+        break
       case 'close-tab': if (active) closeTab(active.id); break
       case 'reopen-tab': run(workspace.reopen); break
       case 'quick-open': setDialog({ type: 'quick' }); break
@@ -368,7 +489,8 @@ export default function App() {
         <div className="topline">
           <TabStrip docs={docs} active={active} isDirty={isDirty} onSelect={id => { flushEditor(); workspace.select(id) }}
             onClose={closeTab} onNew={() => action('new-file')} plus={Plus}/>
-          <Toolbar active={active} mode={mode} setMode={setMode} action={action} command={command} settings={settings} native={native}/>
+          <Toolbar active={active} mode={mode} setMode={setMode} action={action} command={command} settings={settings} native={native}
+            canUndoReview={canUndoReview}/>
         </div>
         {findState && active && <FindBar key={findState.id} initial={findState} close={() => { setFindState(null); editor.current?.focus() }}
           find={(query, options) => editor.current?.find(query, options)} replace={(query, value, options) => editor.current?.replace(query, value, options) ?? 0}/>}
@@ -400,6 +522,32 @@ export default function App() {
     {message && <div className={'toast ' + (message.error ? 'error' : '')} role={message.error ? 'alert' : 'status'}>
       {message.error ? <AlertTriangle size={17}/> : <CircleCheck size={17}/>} {message.text}
     </div>}
+    {reviewDoc && <Suspense fallback={null}>
+      <ReviewDialog key={dialog.requestId} name={reviewDoc.name} baseText={dialog.baseText} currentText={reviewDoc.text}
+        diskText={reviewDoc.conflict?.document?.text ?? null} diskConflict={!!reviewDoc.conflict}
+        initialCandidate={dialog.initialCandidate}
+        compareGit={reviewDoc.path && desktop.readGitBaseline ? ref => desktop.readGitBaseline({ documentPath: reviewDoc.path, ref }) : undefined}
+        chooseCandidate={desktop.chooseReviewCandidate} copyBase={text => desktop.writeClipboard({ text })} theme={renderTheme}
+        onApply={applyReview} onClose={closeDialog}/>
+    </Suspense>}
+    {dialog?.type === 'workflow-templates' && <TemplatesDialog onClose={closeDialog} onCreate={index => {
+      flushEditor()
+      for (const document of workflowTemplates[index].documents) workspace.add(document)
+      closeDialog()
+    }}/>}
+    {dialog?.type === 'spec-check' && <SpecCheckDialog documents={docs} onClose={closeDialog} onJump={(id, line) => {
+      const doc = workspace.getDocument(id)
+      if (!doc) return
+      closeDialog()
+      workspace.select(id)
+      jumpToSource(line, doc)
+    }}/>}
+    {dialog?.type === 'source-link' && active?.id === dialog.docId &&
+      <SourceLinkDialog document={active} documents={docs} onClose={closeDialog} onInsert={value => {
+        closeDialog()
+        const id = active.id
+        requestAnimationFrame(() => { if (activeId.current === id) command('link', value) })
+      }}/>}
     {dialog?.type === 'settings' && <Settings settings={settings} configure={configure} close={closeDialog} native={native} initialPanel={dialog.panel}/>}
     {dialog?.type === 'quick' && <QuickOpen workspace={workspace} onClose={closeDialog} notify={notify}/>}
     {dialog?.type === 'search-folder' && <FolderSearch path={settings.workspace} close={closeDialog} notify={notify}
