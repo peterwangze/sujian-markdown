@@ -35,8 +35,9 @@
 
 ## 当前验收记录
 
-- Windows x64 的 Electron 桌面实测覆盖命令行打开中文文件、原位修改后保存、BOM 和 CRLF 保留、末尾无换行保留、磁盘干净文档重载、脏文档冲突预览、退出后写入完整草稿。文件层测试另外覆盖 UTF-16BE、混合换行、保存竞争、外部删除、Unicode 搜索与取消。[文件层回归用例](../electron/documents.test.cjs)
-- Windows x64 的桌面桥接与 ASAR 夹具通过启动、读写、搜索和本地图片测试。HTML、PDF、PNG、DOCX 已生成实物，并确认 DOCX 内含预渲染图表的 PNG 资源。搜索工作线程在 ASAR 外解包运行。[桌面启动测试](../scripts/smoke-desktop.mjs)
+- Windows x64 的 Electron 桌面实测覆盖命令行打开中文文件、源码编辑后保存、BOM 和 CRLF 保留、末尾无换行保留、磁盘干净文档重载、脏文档冲突预览、退出后保存草稿、重启后恢复且保留磁盘版本。文件层测试另外覆盖 UTF-16BE、混合换行、保存竞争、外部删除、Unicode 搜索与取消。[文件层回归用例](../electron/documents.test.cjs)
+- Windows x64 的桌面桥接与 ASAR 夹具通过启动、读写、搜索和本地图片测试。桌面导出生成了 HTML、PDF、PNG、DOCX、EPUB、纯文本和 Reveal.js，DOCX 可重新导入。另确认 DOCX 内含预渲染图表的 PNG 资源，并在 Edge 断网模式打开两页 Reveal.js 样本，观察到零 HTTP 请求。搜索工作线程在 ASAR 外解包运行。[桌面启动测试](../scripts/smoke-desktop.mjs)
+- 本机 Edge 的生产构建打开一份 161,004 词、877,490 字节的 CRLF 文档，自动进入源码模式，查找到末尾唯一标记并滚动到对应位置。Chromium 模拟的中文组合输入只提交了一次目标文字。两项为本机观测，真实系统输入法及其他平台的性能需要实测。
 - Windows、macOS 和 Linux 的 x64、arm64 安装产物由发布工作流构建。每个构建对应的安装、启动及校验结果可在发布工作流和 Release 资产清单核对。Windows 本机记录与其他平台的工作流结果分别查看。[构建与发布工作流](../.github/workflows/release.yml)
 
 ## 已知兼容边界
