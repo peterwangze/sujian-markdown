@@ -1,0 +1,327 @@
+import DOMPurify from 'dompurify';
+import Vditor from 'vditor';
+import editorStyles from 'vditor/dist/index.css?inline';
+
+export const vendorRoot = new URL(`${import.meta.env.BASE_URL}vendor/vditor/`, document.baseURI).href.replace(/\/$/, '');
+const assets = `${vendorRoot}/dist`;
+
+export const markdownOptions = {
+  autoSpace: false,
+  fixTermTypo: false,
+  footnotes: true,
+  inlineMath: true,
+  mark: true,
+  sanitize: true,
+  sub: true,
+  sup: true,
+  toc: true,
+};
+
+const pendingScripts = new Map();
+
+export function loadVendorScript(id, file) {
+  if (pendingScripts.has(id)) return pendingScripts.get(id);
+  if (document.getElementById(id)) return Promise.resolve();
+
+  const promise = new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = `${assets}/js/${file}`;
+    script.addEventListener('load', () => {
+      script.id = id;
+      resolve();
+    }, { once: true });
+    script.addEventListener('error', () => {
+      pendingScripts.delete(id);
+      script.remove();
+      reject(new Error(`Unable to load ${file}`));
+    }, { once: true });
+    document.head.append(script);
+  });
+
+  pendingScripts.set(id, promise);
+  return promise;
+}
+
+function installMathStyles() {
+  if (document.getElementById('vditorKatexStyle')) return;
+  const link = document.createElement('link');
+  link.id = 'vditorKatexStyle';
+  link.rel = 'stylesheet';
+  link.href = `${assets}/js/katex/katex.min.css`;
+  document.head.append(link);
+}
+
+function escapeHtml(text) {
+  return String(text).replace(/[&<>"']/g, (character) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+  })[character]);
+}
+
+const sanitizeOptions = {
+  FORBID_TAGS: ['embed', 'form', 'iframe', 'object', 'script', 'style', 'template'],
+  FORBID_ATTR: ['autofocus', 'srcdoc', 'srcset'],
+};
+
+function sanitizedFragment(html, styles = false) {
+  const fragment = DOMPurify.sanitize(html, {
+    ...sanitizeOptions,
+    FORBID_ATTR: styles ? sanitizeOptions.FORBID_ATTR : [...sanitizeOptions.FORBID_ATTR, 'style'],
+    FORBID_TAGS: styles === 'svg' ? sanitizeOptions.FORBID_TAGS.filter((tag) => tag !== 'style') : sanitizeOptions.FORBID_TAGS,
+    RETURN_DOM_FRAGMENT: true,
+  });
+  if (styles === 'svg') {
+    for (const style of fragment.querySelectorAll('style, [style]')) {
+      const css = style.tagName.toLowerCase() === 'style' ? style.textContent : style.getAttribute('style');
+      if (/@(?:import|font-face|namespace)\b|\\|url\(\s*["']?\s*[^#"'\s]|image-set\s*\(/i.test(css)) {
+        if (style.tagName.toLowerCase() === 'style') style.remove();
+        else style.removeAttribute('style');
+      }
+    }
+  }
+  return fragment;
+}
+
+function renderError(node, error) {
+  const hint = document.createElement('small');
+  hint.className = 'markdown-render-error';
+  hint.textContent = error instanceof Error ? error.message : String(error);
+  node.append(hint);
+}
+
+async function renderMath(root) {
+  const expressions = [...root.querySelectorAll('.language-math')];
+  if (!expressions.length) return;
+
+  installMathStyles();
+  try {
+    await loadVendorScript('vditorKatexScript', 'katex/katex.min.js');
+    await loadVendorScript('vditorKatexChemScript', 'katex/mhchem.min.js');
+  } catch (error) {
+    expressions.forEach((node) => renderError(node, error));
+    return;
+  }
+
+  for (const node of expressions) {
+    const displayMode = node.tagName === 'DIV' || node.closest('pre') !== null;
+    try {
+      const html = window.katex.renderToString(node.textContent, { displayMode, trust: false });
+      node.replaceChildren(sanitizedFragment(html, true));
+    } catch (error) {
+      renderError(node, error);
+    }
+  }
+}
+
+function graphvizWorker() {
+  const renderer = `${assets}/js/graphviz/full.render.js`;
+  const script = new Blob([`importScripts(${JSON.stringify(renderer)});`], { type: 'application/javascript' });
+  const url = URL.createObjectURL(script);
+  try {
+    return new Worker(url);
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+let diagramQueue = Promise.resolve();
+
+async function renderDiagrams(root, theme) {
+  const languages = ['mermaid', 'flowchart', 'flow', 'graphviz', 'sequence'];
+  const diagrams = [...root.querySelectorAll(languages.map((language) => `div.language-${language}, pre > code.language-${language}`).join(', '))];
+  if (!diagrams.length) return;
+
+  // Mermaid's configuration is global. Keep simultaneous previews and exports in order.
+  const run = diagramQueue.then(async () => {
+    let worker;
+    try {
+      for (const [sourceIndex, code] of diagrams.entries()) {
+        const language = languages.find((name) => code.classList.contains(`language-${name}`));
+        const pre = code.closest('pre');
+        const block = pre && pre !== root ? pre : code;
+        const host = document.createElement('div');
+        host.className = 'markdown-diagram';
+        host.dataset.sourceIndex = String(sourceIndex);
+        host.dataset.diagramLanguage = language;
+        try {
+          let svg;
+          if (language === 'mermaid' || language === 'sequence') {
+            await loadVendorScript('vditorMermaidScript', 'mermaid/mermaid.min.js');
+            window.mermaid.initialize({ startOnLoad: false, securityLevel: 'strict', htmlLabels: false, theme: theme === 'dark' ? 'dark' : 'default' });
+            const definition = language === 'sequence' ? convertSequence(code.textContent) : code.textContent;
+            ({ svg } = await window.mermaid.render(`diagram-${crypto.randomUUID()}`, definition));
+          } else if (language === 'flowchart' || language === 'flow') {
+            await loadVendorScript('vditorFlowchartScript', 'flowchart.js/flowchart.min.js');
+            window.flowchart.parse(code.textContent).drawSVG(host);
+            svg = host.innerHTML;
+          } else if (language === 'graphviz') {
+            await loadVendorScript('vditorGraphVizScript', 'graphviz/viz.js');
+            worker ??= graphvizWorker();
+            svg = (await new window.Viz({ worker }).renderSVGElement(code.textContent)).outerHTML;
+          }
+          host.replaceChildren(sanitizedFragment(svg, 'svg'));
+          block.replaceWith(host);
+        } catch (error) {
+          renderError(block, error);
+        }
+      }
+    } finally {
+      worker?.terminate();
+    }
+  });
+  diagramQueue = run.catch(() => {});
+  await run;
+}
+
+function convertSequence(source) {
+  const participants = new Map();
+  const getActor = (value, label) => {
+    const name = value.trim().replace(/^"|"$/g, '');
+    if (!participants.has(name)) participants.set(name, { id: `p${participants.size}`, label: label ?? name });
+    return participants.get(name).id;
+  };
+  const statements = [];
+  let title;
+
+  for (const raw of source.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line || line.startsWith('#')) continue;
+    const heading = line.match(/^title\s*:?\s*(.+)$/i);
+    const participant = line.match(/^participant\s+(.+?)(?:\s+as\s+(\S+))?$/i);
+    const note = line.match(/^note\s+(left of|right of|over)\s+(.+?)\s*:\s*(.+)$/i);
+    const signal = line.match(/^(.+?)\s*(-{1,2})(>{0,2})\s*(.+?)\s*:\s*(.+)$/);
+    if (heading) title = heading[1];
+    else if (participant) getActor(participant[2] ?? participant[1], participant[1].replace(/^"|"$/g, ''));
+    else if (note) statements.push(`Note ${note[1].toLowerCase()} ${note[2].split(',').map((name) => getActor(name)).join(',')}: ${note[3]}`);
+    else if (signal) statements.push(`${getActor(signal[1])}${signal[2]}${signal[3] === '>' ? '>>' : '>'}${getActor(signal[4])}: ${signal[5]}`);
+    else throw new Error(`无法解析时序图行 ${line}`);
+  }
+
+  const header = title ? `---\ntitle: ${JSON.stringify(title)}\n---\n` : '';
+  const declarations = [...participants.values()].map(({ id, label }) => `participant ${id} as ${label}`);
+  return `${header}sequenceDiagram\n${[...declarations, ...statements].join('\n')}`;
+}
+
+export function renderLegacyDiagram(preview, theme) {
+  void renderDiagrams(preview, theme);
+}
+
+export function isLocalImage(source) {
+  return Boolean(source) && !/^(?:https?:|data:|blob:|sujian-asset:|\/\/|#)/i.test(source);
+}
+
+async function resolveAssets(root, resolveImage, inlineRemote) {
+  if (!resolveImage) return;
+
+  await Promise.all([...root.querySelectorAll('img[src]')].map(async (image) => {
+    const source = image.getAttribute('src');
+    if (!isLocalImage(source) && (!inlineRemote || !/^https?:/i.test(source))) return;
+
+    try {
+      const resolved = await resolveImage(source);
+      if (typeof resolved === 'string' && /^(?:sujian-asset:\/\/local\/|blob:|data:image\/|https?:)/i.test(resolved)) {
+        image.src = resolved;
+      }
+    } catch {
+      // Preserve the address and alt text when an asset is missing.
+    }
+  }));
+}
+
+function highlightCss(theme) {
+  return `${assets}/js/highlight.js/styles/${theme === 'dark' ? 'github-dark' : 'github'}.min.css`;
+}
+
+async function highlightCode(root, theme, preview) {
+  const codes = [...root.querySelectorAll('pre > code[class*="language-"]')];
+  if (!codes.length) return;
+
+  await loadVendorScript('vditorHljsScript', 'highlight.js/highlight.min.js');
+  await loadVendorScript('vditorHljsThirdScript', 'highlight.js/third-languages.js');
+  for (const code of codes) {
+    const language = [...code.classList].find((name) => name.startsWith('language-')).slice(9);
+    if (!window.hljs.getLanguage(language)) continue;
+    const html = window.hljs.highlight(code.textContent, { language, ignoreIllegals: true }).value;
+    code.replaceChildren(sanitizedFragment(html));
+    code.classList.add('hljs');
+  }
+
+  if (preview && root.querySelector('.hljs')) {
+    const link = document.getElementById('vditorHljsStyle') ?? document.createElement('link');
+    link.id = 'vditorHljsStyle';
+    link.rel = 'stylesheet';
+    link.href = highlightCss(theme);
+    if (!link.isConnected) document.head.append(link);
+  }
+}
+
+export async function renderPreview(markdown, { resolveImage, theme = 'light', inlineRemote = false, allowRemoteMedia = true, preview = true } = {}) {
+  await loadVendorScript('vditorLuteScript', 'lute/lute.min.js');
+  const html = await Vditor.md2html(markdown, { cdn: vendorRoot, markdown: markdownOptions });
+  const root = document.createElement('article');
+  root.className = 'vditor-reset';
+  const fragment = sanitizedFragment(html);
+  if (!allowRemoteMedia) {
+    for (const media of fragment.querySelectorAll('img[src], audio[src], video[src], source[src], video[poster]')) {
+      for (const attribute of ['src', 'poster']) {
+        if (/^(?:https?:|\/\/)/i.test(media.getAttribute(attribute) ?? '')) media.removeAttribute(attribute);
+      }
+    }
+  }
+  root.append(fragment);
+  for (const item of root.querySelectorAll('.vditor-toc [data-target-id]')) {
+    const link = document.createElement('a');
+    link.href = `#${encodeURIComponent(item.getAttribute('data-target-id'))}`;
+    link.append(...item.childNodes);
+    item.replaceWith(link);
+  }
+  await Promise.all([renderMath(root), renderDiagrams(root, theme), resolveAssets(root, resolveImage, inlineRemote)]);
+  await highlightCode(root, theme, preview);
+  return root;
+}
+
+let embeddedMathCss;
+
+function offlineMathCss() {
+  embeddedMathCss ??= (async () => {
+    const root = `${assets}/js/katex/`;
+    const css = await (await fetch(`${root}katex.min.css`)).text();
+    const urls = [...new Set([...css.matchAll(/url\((fonts\/[^)]+\.woff2)\)/g)].map((match) => match[1]))];
+    const pairs = await Promise.all(urls.map(async (url) => {
+      const response = await fetch(root + url);
+      if (!response.ok) throw new Error(`Unable to embed math font ${url}`);
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      const base64 = btoa(Array.from(bytes, (byte) => String.fromCharCode(byte)).join(''));
+      return [url, `data:font/woff2;base64,${base64}`];
+    }));
+    const data = new Map(pairs);
+    return css.replace(/src:([^;}]*fonts\/[^;}]+)/g, (_match, value) => {
+      const font = value.match(/url\((fonts\/[^)]+\.woff2)\)/)?.[1];
+      return font ? `src:url(${data.get(font)}) format('woff2')` : '';
+    });
+  })();
+  return embeddedMathCss;
+}
+
+const documentCss = `
+  html { color-scheme: light; }
+  body { margin: 0; color: #242620; background: #fff; }
+  main { max-width: 46rem; margin: 0 auto; padding: 3rem 2rem; }
+  .vditor-reset { font: 16px/1.7 system-ui, sans-serif; }
+  img, svg { max-width: 100%; height: auto; }
+  pre, table, blockquote, .markdown-diagram { break-inside: avoid; }
+  .markdown-diagram { overflow-x: auto; text-align: center; }
+  .markdown-render-error { display: block; margin-top: .5em; color: #a3282c; }
+  @media print { main { margin: 0; padding: 0; max-width: none; } }
+`;
+
+export async function renderDocument(markdown, { title = 'Markdown', styled = true, theme = 'light', ...options } = {}) {
+  const article = await renderPreview(markdown, { ...options, theme, preview: false });
+  const mathCss = article.querySelector('.katex') ? await offlineMathCss() : '';
+  const codeCss = styled && article.querySelector('.hljs') ? await (await fetch(highlightCss(theme))).text() : '';
+  const darkCss = theme === 'dark' ? '@media screen {html {color-scheme:dark} body {background:#181a18;color:#e9ece5}}' : '';
+  const styles = (styled ? editorStyles + documentCss + codeCss + darkCss : '') + mathCss;
+  const stylesheet = styles ? `<style>${styles.replace(/<\/style/gi, '<\\/style')}</style>` : '';
+  const media = options.allowRemoteMedia === false ? 'data: blob: file: sujian-asset:' : 'data: blob: https: http: file: sujian-asset:';
+  const csp = `script-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; style-src 'unsafe-inline'; font-src data:; img-src ${media}; media-src ${media}`;
+  return `<!doctype html>\n<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta http-equiv="Content-Security-Policy" content="${csp}"><title>${escapeHtml(title)}</title>${stylesheet}</head><body><main>${article.outerHTML}</main></body></html>`;
+}

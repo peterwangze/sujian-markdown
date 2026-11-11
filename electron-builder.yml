@@ -1,0 +1,60 @@
+appId: io.github.peterwangze.sujian
+productName: Sujian
+copyright: Copyright © Sujian contributors
+artifactName: Sujian-${version}-${os}-${arch}.${ext}
+asar: true
+asarUnpack:
+  - electron/workspace-search.cjs
+  - electron/documents.cjs
+npmRebuild: false
+directories:
+  output: release
+  buildResources: build
+files:
+  - dist/**/*
+  - electron/**/*
+  - '!electron/**/*.test.*'
+  - '!node_modules/**/*'
+extraResources:
+  - from: build/icon.png
+    to: icon.png
+  - from: node_modules/reveal.js/dist
+    to: revealjs/dist
+  - from: node_modules/reveal.js/LICENSE
+    to: revealjs/LICENSE
+fileAssociations:
+  - ext: [md, markdown, mdown, mkd, mkdn]
+    name: Markdown document
+    mimeType: text/markdown
+    role: Editor
+mac:
+  category: public.app-category.productivity
+  icon: build/icon.png
+  target: dmg
+  extraResources:
+    - from: build/pandoc/darwin-${arch}
+      to: pandoc
+  identity: '-'
+  hardenedRuntime: false
+  notarize: false
+win:
+  icon: build/icon.png
+  target: nsis
+  extraResources:
+    - from: build/pandoc/win32-${arch}
+      to: pandoc
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: false
+linux:
+  icon: build/icon.png
+  category: Office
+  executableName: sujian
+  target: [AppImage, deb]
+  extraResources:
+    - from: build/pandoc/linux-${arch}
+      to: pandoc
+deb:
+  maintainer: Sujian contributors <peterwangze@users.noreply.github.com>
