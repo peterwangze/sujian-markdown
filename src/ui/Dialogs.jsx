@@ -1,10 +1,13 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useId, useImperativeHandle, useMemo, useRef, useState } from 'react'
 import { ArrowDown, ArrowUp, X, Search, FileText, RotateCcw } from 'lucide-react'
 import { desktop } from '../workspace/desktop.js'
 import { formats, fuzzy } from '../workspace/text.js'
+import { isComposingKey } from '../workspace/commands.js'
 import { IconButton, Modal } from './Controls.jsx'
+import { FontSettings, ThemeSettings } from './AppearanceSettings.jsx'
+import { ShortcutSettings } from './ShortcutSettings.jsx'
 
-export function FindBar({ initial, close, find, replace }) {
+export function FindBar({ initial, close, find, replace, controlRef }) {
   const [query, setQuery] = useState(initial.query ?? '')
   const [replacement, setReplacement] = useState('')
   const [showReplace, setShowReplace] = useState(initial.replace)
@@ -12,6 +15,14 @@ export function FindBar({ initial, close, find, replace }) {
   const [message, setMessage] = useState('')
   const input = useRef(null)
   useEffect(() => { input.current.focus(); input.current.select() }, [])
+  useImperativeHandle(controlRef, () => ({
+    open(replacing) {
+      if (replacing) setShowReplace(true)
+      input.current.focus({ preventScroll: true })
+      input.current.select()
+    },
+    next: run,
+  }))
   function run(backward = false) {
     try {
       const match = query && find(query, { ...flags, backward })
@@ -25,14 +36,20 @@ export function FindBar({ initial, close, find, replace }) {
       setMessage('已替换 ' + count + ' 处')
     } catch (error) { setMessage(error.message) }
   }
-  return <section className="find-bar" aria-label="查找和替换" onKeyDown={event => { if (event.key === 'Escape') close() }}>
+  return <section className="find-bar" aria-label="查找和替换" onKeyDown={event => {
+    if (event.key === 'Escape' && !isComposingKey(event.nativeEvent)) close()
+  }}>
     <form onSubmit={event => { event.preventDefault(); run() }}>
       <Search size={17}/><input ref={input} aria-label="查找文字" placeholder="在本文档中查找" value={query}
-        onKeyDown={event => { if (event.key === 'Enter' && event.shiftKey) { event.preventDefault(); run(true) } }}
+        onKeyDown={event => {
+          if (event.key !== 'Enter' || isComposingKey(event.nativeEvent)) return
+          event.preventDefault()
+          run(event.shiftKey)
+        }}
         onChange={event => { setQuery(event.target.value); setMessage('') }}/>
       <span className="match-count" aria-live="polite">{message}</span>
-      <IconButton icon={ArrowUp} label="上一个匹配" onClick={() => run(true)}/>
-      <IconButton icon={ArrowDown} label="下一个匹配" onClick={() => run()}/>
+      <IconButton icon={ArrowUp} label="上一个匹配" title="上一个匹配（Shift+F3）" onClick={() => run(true)}/>
+      <IconButton icon={ArrowDown} label="下一个匹配" title="下一个匹配（F3）" onClick={() => run()}/>
       <button className="small-button" type="button" onClick={() => setShowReplace(!showReplace)}>替换</button>
       <IconButton icon={X} label="关闭查找" onClick={close}/>
     </form>
@@ -52,10 +69,13 @@ export function QuickOpen({ workspace, onClose, notify }) {
   const [files, setFiles] = useState([])
   const [query, setQuery] = useState('')
   const [index, setIndex] = useState(0)
+  const listId = useId()
+  const queryInput = useRef(null)
+  const selectedResult = useRef(null)
   const { settings, docs, openPath, select } = workspace
   useEffect(() => {
     let current = true
-    if (settings.workspace) desktop.findDocuments(settings.workspace, { showHidden: settings.showHidden, limit: 5000 }).then(result => {
+    if (settings.workspace && desktop.findDocuments) desktop.findDocuments(settings.workspace, { showHidden: settings.showHidden, limit: 5000 }).then(result => {
       if (current) setFiles(Array.isArray(result) ? result : result.files ?? result.documents ?? [])
     }).catch(error => notify(error.message, true))
     return () => { current = false }
@@ -71,6 +91,8 @@ export function QuickOpen({ workspace, onClose, notify }) {
     return [...unique.values()].map(item => ({ ...item, score: Math.max(fuzzy(item.name, query), fuzzy(item.path || '', query) - 10) }))
       .filter(item => item.score >= 0).sort((a, b) => b.score - a.score).slice(0, 50)
   }, [docs, settings.recent, files, query])
+  const selected = Math.min(index, candidates.length - 1)
+  useEffect(() => { selectedResult.current?.scrollIntoView({ block: 'nearest' }) }, [selected, candidates])
   async function pick(item) {
     if (!item) return
     try {
@@ -79,18 +101,43 @@ export function QuickOpen({ workspace, onClose, notify }) {
       onClose()
     } catch (error) { notify(error.message, true) }
   }
-  return <Modal title="快速打开" onClose={onClose} className="search-modal">
-    <div className="search-input"><Search size={18}/><input autoFocus placeholder="输入文件名或路径" aria-label="筛选文件"
+  return <Modal title="快速打开" onClose={onClose} className="search-modal" initialFocusRef={queryInput}>
+    <div className="search-input"><Search size={18}/><input ref={queryInput} placeholder="输入文件名或路径" aria-label="筛选文件"
+      role="combobox" aria-expanded={Boolean(candidates.length)} aria-controls={listId} aria-autocomplete="list"
+      aria-activedescendant={selected >= 0 ? `${listId}-${selected}` : undefined}
       value={query} onChange={event => { setQuery(event.target.value); setIndex(0) }} onKeyDown={event => {
-        if (event.key === 'Enter') { event.preventDefault(); pick(candidates[index]) }
-        if (event.key === 'ArrowDown') { event.preventDefault(); setIndex(Math.min(candidates.length - 1, index + 1)) }
-        if (event.key === 'ArrowUp') { event.preventDefault(); setIndex(Math.max(0, index - 1)) }
+        if (isComposingKey(event.nativeEvent)) return
+        if (event.key === 'Enter') { event.preventDefault(); void pick(candidates[selected]) }
+        if (candidates.length && ['ArrowDown', 'ArrowUp'].includes(event.key)) {
+          event.preventDefault()
+          const offset = event.key === 'ArrowDown' ? 1 : -1
+          setIndex((selected + offset + candidates.length) % candidates.length)
+        }
       }}/></div>
-    <div className="search-results">
-      {candidates.map((item, i) => <button className={index === i ? 'selected' : ''} key={item.path ?? item.id}
-        onMouseEnter={() => setIndex(i)} onClick={() => pick(item)}><FileText size={16}/><span>{item.name}<small>{item.path}</small></span></button>)}
-      {!candidates.length && <p className="sidebar-note">没有匹配的文件。</p>}
+    <div className="search-results" id={listId} role="listbox" aria-label="匹配的文件" hidden={!candidates.length}>
+      {candidates.map((item, i) => <button className={selected === i ? 'selected' : ''} key={item.path ?? item.id}
+        ref={selected === i ? selectedResult : null} id={`${listId}-${i}`} role="option" aria-selected={selected === i} tabIndex={-1}
+        onMouseDown={event => event.preventDefault()} onPointerMove={() => setIndex(i)}
+        onClick={() => pick(item)}><FileText size={16}/><span>{item.name}<small>{item.path}</small></span></button>)}
     </div>
+    {!candidates.length && <p className="sidebar-note" role="status">没有匹配的文件。</p>}
+  </Modal>
+}
+
+export function GoToLine({ text, onClose, onJump }) {
+  const [line, setLine] = useState('')
+  const input = useRef(null)
+  const limit = text.split(/\r\n|\n|\r/).length
+  const valid = /^\d+$/.test(line) && Number(line) >= 1 && Number(line) <= limit
+  return <Modal title="跳转到行" onClose={onClose} initialFocusRef={input}>
+    <form onSubmit={event => { event.preventDefault(); if (valid) onJump(Number(line)) }}>
+      <label className="text-setting">行号
+        <input ref={input} inputMode="numeric" value={line} onChange={event => setLine(event.target.value)}
+          placeholder={`1–${limit}`} aria-describedby="line-range"/>
+      </label>
+      <p className="modal-detail" id="line-range">共 {limit} 行，跳转后在源码中定位。</p>
+      <footer><button type="button" onClick={onClose}>取消</button><button className="primary" disabled={!valid}>跳转</button></footer>
+    </form>
   </Modal>
 }
 
@@ -138,26 +185,16 @@ const preferences = [
   ['wrap', '源码自动换行'], ['showHidden', '显示隐藏文件'], ['remoteMedia', '显示网络图片'],
 ]
 
-export function Settings({ settings, configure, close, native, initialPanel = 'appearance' }) {
+export function Settings({ settings, configure, close, native, fonts, initialPanel = 'appearance' }) {
   const [panel, setPanel] = useState(initialPanel)
   return <Modal title="设置" onClose={close} className="settings-modal">
     <nav className="settings-nav" aria-label="设置分类">
-      {[['appearance','外观'],['writing','编辑'],['files','文件与资源'],['shortcuts','快捷键']].map(([key, name]) =>
-        <button key={key} className={key === panel ? 'selected' : ''} onClick={() => setPanel(key)}>{name}</button>)}
+      {[['appearance','外观'],['fonts','字体'],['writing','编辑'],['files','文件与资源'],['shortcuts','快捷键']].map(([key, name]) =>
+        <button key={key} className={key === panel ? 'selected' : ''} aria-pressed={key === panel} onClick={() => setPanel(key)}>{name}</button>)}
     </nav>
     <div className="settings-body">
-      {panel === 'appearance' && <>
-        <label className="setting"><span>主题</span><select value={settings.theme} onChange={event => configure({ theme: event.target.value })}>
-          <option value="paper">暖白</option><option value="light">亮白</option><option value="dark">深墨</option><option value="system">跟随系统</option>
-        </select></label>
-        <label className="setting"><span>字号</span><input type="range" min="13" max="28" value={settings.fontSize} onChange={event => configure({ fontSize: +event.target.value })}/><output>{settings.fontSize} px</output></label>
-        <label className="setting"><span>文档宽度</span><input type="range" min="520" max="1160" step="10" value={settings.width} onChange={event => configure({ width: +event.target.value })}/><output>{settings.width} px</output></label>
-        <label className="text-setting">自定义主题 CSS<textarea rows="4" spellCheck="false" value={settings.customCss} onChange={event => configure({ customCss: event.target.value })} placeholder="#write h1 { font-weight: 700; }"/></label>
-        <label className="small-button file-label">导入 CSS<input type="file" accept=".css,text/css" onChange={async event => {
-          const file = event.target.files[0]
-          if (file) configure({ customCss: await file.text() })
-        }}/></label>
-      </>}
+      {panel === 'appearance' && <ThemeSettings settings={settings} configure={configure}/>}
+      {panel === 'fonts' && <FontSettings settings={settings} configure={configure} fonts={fonts}/>}
       {panel === 'writing' && <>
         <label className="setting"><span>默认编辑模式</span><select value={settings.mode} onChange={event => configure({ mode: event.target.value })}>
           <option value="live">即时</option><option value="source">源码</option><option value="split">分栏</option>
@@ -173,29 +210,10 @@ export function Settings({ settings, configure, close, native, initialPanel = 'a
         <label className="text-setting">图片上传程序<input disabled={!native} value={settings.uploader} placeholder="程序的完整路径" onChange={event => configure({ uploader: event.target.value })}/></label>
         <label className="text-setting">上传参数（每行一个）<textarea disabled={!native} value={settings.uploaderArgs} rows="2" onChange={event => configure({ uploaderArgs: event.target.value })}/></label>
       </>}
-      {panel === 'shortcuts' && <ShortcutTable settings={settings} configure={configure}/>}
+      {panel === 'shortcuts' && <ShortcutSettings hotkeys={settings.hotkeys} platform={desktop.platform}
+        onChange={hotkeys => configure({ hotkeys })}/>}
     </div>
   </Modal>
-}
-
-export const shortcuts = [
-  ['new-file','新建文档','Mod+N'], ['open-files','打开文档','Mod+O'],
-  ['open-folder','打开文件夹','Mod+Shift+O'], ['save','保存','Mod+S'], ['save-as','另存为','Mod+Shift+S'],
-  ['close-tab','关闭标签','Mod+W'], ['reopen-tab','重新打开标签','Mod+Shift+T'],
-  ['quick-open','快速打开','Mod+P'], ['find','查找','Mod+F'], ['replace','替换','Mod+H'],
-  ['search-folder','搜索工作区','Mod+Shift+F'], ['view-source','切换源码','Mod+/'],
-  ['toggle-sidebar','切换侧栏','Mod+Shift+L'], ['toggle-focus','专注模式','F8'],
-  ['toggle-typewriter','打字机模式','F9'], ['export','导出','Mod+Shift+E'],
-  ['settings','设置','Mod+,'],
-]
-
-function ShortcutTable({ settings, configure }) {
-  const mac = desktop.platform === 'darwin'
-  return <div className="shortcut-list">{shortcuts.map(([key, name, fallback]) => <label key={key} className="setting">
-    <span>{name}</span><input aria-label={name + ' 快捷键'} value={settings.hotkeys[key] ?? ''}
-      placeholder={fallback.replace('Mod', mac ? 'Cmd' : 'Ctrl')}
-      onChange={event => configure({ hotkeys: { ...settings.hotkeys, [key]: event.target.value } })}/>
-  </label>)}</div>
 }
 
 export function ExportDialog({ name, close, run }) {

@@ -1,6 +1,7 @@
 import DOMPurify from 'dompurify';
 import Vditor from 'vditor';
 import editorStyles from 'vditor/dist/index.css?inline';
+import { resolveTheme, themeDeclarations } from '../theme/themes.js';
 
 export const vendorRoot = new URL(`${import.meta.env.BASE_URL}vendor/vditor/`, document.baseURI).href.replace(/\/$/, '');
 const assets = `${vendorRoot}/dist`;
@@ -129,6 +130,7 @@ async function renderDiagrams(root, theme, embeddedMediaOnly = false) {
   const languages = ['mermaid', 'flowchart', 'flow', 'graphviz', 'sequence'];
   const diagrams = [...root.querySelectorAll(languages.map((language) => `div.language-${language}, pre > code.language-${language}`).join(', '))];
   if (!diagrams.length) return;
+  const { colors, scheme } = resolveTheme(theme);
 
   // Mermaid's configuration is global. Keep simultaneous previews and exports in order.
   const run = diagramQueue.then(async () => {
@@ -150,12 +152,22 @@ async function renderDiagrams(root, theme, embeddedMediaOnly = false) {
           let svg;
           if (language === 'mermaid' || language === 'sequence') {
             await loadVendorScript('vditorMermaidScript', 'mermaid/mermaid.min.js');
-            window.mermaid.initialize({ startOnLoad: false, securityLevel: 'strict', htmlLabels: false, theme: theme === 'dark' ? 'dark' : 'default' });
+            window.mermaid.initialize({
+              startOnLoad: false, securityLevel: 'strict', htmlLabels: false, theme: 'base',
+              themeVariables: {
+                darkMode: scheme === 'dark', background: colors.canvas, textColor: colors.ink,
+                primaryColor: colors.surface, primaryTextColor: colors.ink, primaryBorderColor: colors.accent,
+                secondaryColor: colors.selected, tertiaryColor: colors['table-head'],
+                lineColor: colors.muted, noteBkgColor: colors.quote, noteTextColor: colors.ink,
+              },
+            });
             const definition = language === 'sequence' ? convertSequence(source) : source;
             ({ svg } = await window.mermaid.render(`diagram-${crypto.randomUUID()}`, definition));
           } else if (language === 'flowchart' || language === 'flow') {
             await loadVendorScript('vditorFlowchartScript', 'flowchart.js/flowchart.min.js');
-            window.flowchart.parse(source).drawSVG(host);
+            window.flowchart.parse(source).drawSVG(host, {
+              'font-color': colors.ink, 'line-color': colors.muted, 'element-color': colors.accent, fill: colors.surface,
+            });
             svg = host.innerHTML;
           } else if (language === 'graphviz') {
             await loadVendorScript('vditorGraphVizScript', 'graphviz/viz.js');
@@ -237,7 +249,7 @@ async function resolveAssets(root, resolveImage, inlineRemote) {
 }
 
 function highlightCss(theme) {
-  return `${assets}/js/highlight.js/styles/${theme === 'dark' ? 'github-dark' : 'github'}.min.css`;
+  return `${assets}/js/highlight.js/styles/${resolveTheme(theme).scheme === 'dark' ? 'github-dark' : 'github'}.min.css`;
 }
 
 async function highlightCode(root, theme, preview) {
@@ -258,7 +270,7 @@ async function highlightCode(root, theme, preview) {
     const link = document.getElementById('vditorHljsStyle') ?? document.createElement('link');
     link.id = 'vditorHljsStyle';
     link.rel = 'stylesheet';
-    link.href = highlightCss(theme);
+    link.href = highlightCss(document.documentElement.dataset.theme ?? theme);
     if (!link.isConnected) document.head.append(link);
   }
 }
@@ -333,24 +345,37 @@ function offlineMathCss() {
 }
 
 const documentCss = `
-  html { color-scheme: light; }
-  body { margin: 0; color: #242620; background: #fff; }
+  body { margin: 0; color: var(--ink); background: var(--canvas); }
   main { max-width: 46rem; margin: 0 auto; padding: 3rem 2rem; }
-  .vditor-reset { font: 16px/1.7 system-ui, sans-serif; }
+  #write { color: var(--ink); font: var(--export-font-size)/var(--export-line-height) system-ui, sans-serif; }
+  #write a { color: var(--accent-ink); text-decoration: underline; }
+  #write :is(h1,h2) { border-color: var(--border); }
+  #write hr { background: var(--border); }
+  #write blockquote { color: var(--ink); background: var(--quote); border-color: var(--accent); }
+  #write table tr { background: var(--canvas); border-color: var(--border); }
+  #write table :is(th,td) { border-color: var(--border); }
+  #write table th, #write table tbody tr:nth-child(2n) { background: var(--table-head); }
+  #write code:not(.hljs), #write kbd { color: var(--ink); background: var(--chrome); }
+  #write ::selection { color: var(--ink); background: var(--selection); }
   img, svg { max-width: 100%; height: auto; }
   pre, table, blockquote, .markdown-diagram { break-inside: avoid; }
   .markdown-diagram { overflow-x: auto; text-align: center; }
-  .markdown-render-error { display: block; margin-top: .5em; color: #a3282c; }
-  @media print { main { margin: 0; padding: 0; max-width: none; } }
+  .markdown-render-error { display: block; margin-top: .5em; color: var(--accent-ink); }
 `;
 
-export async function renderDocument(markdown, { title = 'Markdown', styled = true, theme = 'light', ...options } = {}) {
-  const article = await renderPreview(markdown, { ...options, theme, preview: false });
+export async function renderDocument(markdown, {
+  title = 'Markdown', styled = true, theme = 'light', print = false, typography, ...options
+} = {}) {
+  const appearance = resolveTheme(print ? 'light' : theme);
+  const article = await renderPreview(markdown, { ...options, theme: appearance.id, preview: false });
   article.id = 'write';
   const mathCss = article.querySelector('.katex') ? await offlineMathCss() : '';
-  const codeCss = styled && article.querySelector('.hljs') ? await (await fetch(highlightCss(theme))).text() : '';
-  const darkCss = theme === 'dark' ? '@media screen {html {color-scheme:dark} body {background:#181a18;color:#e9ece5}}' : '';
-  const styles = (styled ? editorStyles + documentCss + codeCss + darkCss : '') + mathCss;
+  const codeCss = styled && article.querySelector('.hljs') ? await (await fetch(highlightCss(appearance.id))).text() : '';
+  const fontSize = Number.isFinite(typography?.fontSize) ? Math.min(36, Math.max(12, typography.fontSize)) : 16;
+  const lineHeight = Number.isFinite(typography?.lineHeight) ? Math.min(2.4, Math.max(1.25, typography.lineHeight)) : 1.7;
+  const paletteCss = `:root{${themeDeclarations(appearance)}--export-font-size:${fontSize}px;--export-line-height:${lineHeight};}`;
+  const printCss = '@media print { main { margin: 0; padding: 0; max-width: none; } }';
+  const styles = (styled ? editorStyles + paletteCss + documentCss + codeCss + printCss : '') + mathCss;
   const stylesheet = styles ? `<style>${styles.replace(/<\/style/gi, '<\\/style')}</style>` : '';
   const media = options.allowRemoteMedia === false ? 'data: blob: file: sujian-asset:' : 'data: blob: https: http: file: sujian-asset:';
   const csp = `script-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; style-src 'unsafe-inline'; font-src data:; img-src ${media}; media-src ${media}`;

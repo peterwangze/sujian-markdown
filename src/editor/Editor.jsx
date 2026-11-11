@@ -2,12 +2,17 @@ import { useEffect, useImperativeHandle, useLayoutEffect, useRef, useState } fro
 import { Annotation, Compartment, EditorSelection, EditorState, Transaction } from '@codemirror/state';
 import { EditorView, drawSelection, dropCursor, highlightActiveLine, keymap } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap, indentWithTab, redo, undo } from '@codemirror/commands';
-import { defaultHighlightStyle, syntaxHighlighting } from '@codemirror/language';
+import { HighlightStyle, syntaxHighlighting } from '@codemirror/language';
 import { markdown } from '@codemirror/lang-markdown';
+import { tags } from '@lezer/highlight';
 import Vditor from 'vditor';
 import 'vditor/dist/index.css';
+import { resolveTheme } from '../theme/themes.js';
+import { isComposingKey } from '../workspace/commands.js';
 import { formatMarkdown } from './format.js';
 import { matchMarkdown, projectMarkdownEdit, replacementText } from './markdown-edits.js';
+import { handleRichCodeKeys } from './rich-code-keys.js';
+import { sourceKeys } from './source-keys.js';
 import { isLocalImage, loadVendorScript, markdownOptions, renderLegacyDiagram, renderPreview, vendorRoot } from './render-document.js';
 import './editor.css';
 
@@ -15,6 +20,22 @@ const nativeCommands = ['bold', 'italic', 'strike', 'inline-code', 'quote', 'lis
 const lineCommands = ['heading', 'quote', 'list', 'ordered-list', 'check', 'indent', 'outdent'];
 const sourceText = (value) => value.replace(/\r\n?/g, '\n');
 const externalEdit = Annotation.define();
+const sourceSyntax = HighlightStyle.define([
+  { tag: tags.heading, color: 'var(--accent-ink)', fontWeight: 'bold' },
+  { tag: [tags.link, tags.url], color: 'var(--syntax-link)', textDecoration: 'underline' },
+  { tag: tags.monospace, color: 'var(--syntax-code)' },
+  { tag: tags.quote, color: 'var(--syntax-quote)' },
+  { tag: tags.processingInstruction, color: 'var(--muted)' },
+  { tag: tags.emphasis, fontStyle: 'italic' },
+  { tag: tags.strong, fontWeight: 'bold' },
+  { tag: tags.strikethrough, textDecoration: 'line-through' },
+]);
+const sourceAppearance = EditorView.theme({
+  '&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground, & .cm-selectionBackground': {
+    backgroundColor: 'var(--selection)',
+  },
+  '& .cm-cursor, & .cm-dropCursor': { borderLeftColor: 'var(--accent-ink)' },
+});
 const tableActions = [
   ['rowAbove', '上方加行', 'f', true], ['rowBelow', '下方加行', '='],
   ['columnLeft', '左侧加列', 'g', true], ['columnRight', '右侧加列', '=', true],
@@ -24,11 +45,13 @@ const tableActions = [
 
 function sourceExtensions(onUpdate, latest, wrapping) {
   return [
-    markdown(), syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
+    markdown({ addKeymap: false }), sourceKeys, syntaxHighlighting(sourceSyntax), sourceAppearance,
     history(), drawSelection(), dropCursor(), highlightActiveLine(),
     wrapping.of(latest.current.wrap ? EditorView.lineWrapping : []),
     keymap.of([indentWithTab, ...defaultKeymap, ...historyKeymap]),
-    EditorView.contentAttributes.of({ 'aria-label': 'Markdown 源码' }),
+    EditorView.contentAttributes.of({
+      'aria-label': 'Markdown 源码', 'aria-description': '先按 Escape，再按 Tab 或 Shift+Tab 可移出编辑区。',
+    }),
     EditorView.scrollMargins.of((view) => {
       if (!latest.current.typewriter) return null;
       const margin = Math.round(view.scrollDOM.clientHeight * 0.35);
@@ -36,6 +59,11 @@ function sourceExtensions(onUpdate, latest, wrapping) {
     }),
     EditorView.updateListener.of(onUpdate),
   ];
+}
+
+function setLiveTheme(editor, theme) {
+  const dark = resolveTheme(theme).scheme === 'dark';
+  editor.setTheme(dark ? 'dark' : 'classic', dark ? 'dark' : 'light', dark ? 'github-dark' : 'github');
 }
 
 function visibleText(editor) {
@@ -235,9 +263,9 @@ export function Editor({
     setTableSelection(status);
   }
 
-  function tableCommand([action, , baseKey, shiftKey = false]) {
+  function tableCommand([action, , baseKey, shiftKey = false], fromCell = activeCell.current) {
     const instance = rich.current;
-    let cell = activeCell.current;
+    let cell = fromCell;
     if (!instance || !cell?.isConnected) return;
     let key = baseKey;
     let shift = shiftKey;
@@ -313,6 +341,45 @@ export function Editor({
     const flush = (event) => {
       if (!event.isComposing) queueMicrotask(commitRich);
     };
+    let tabExitUntil = 0;
+    const editKeys = (event) => {
+      const editable = instance?.vditor.ir.element;
+      if (!editable?.contains(event.target) || isComposingKey(event) || event.defaultPrevented) return;
+      const nextTabExits = performance.now() < tabExitUntil;
+      tabExitUntil = 0;
+      if (event.key === 'Escape') {
+        tabExitUntil = performance.now() + 2000;
+        return;
+      }
+      const modified = event.ctrlKey || event.metaKey || event.altKey;
+      if (event.key === 'Tab' && !modified && nextTabExits) {
+        event.stopImmediatePropagation();
+        return;
+      }
+      if (handleRichCodeKeys(event, editable)) return;
+      const addWithEnter = event.key === 'Enter' && !event.shiftKey && !event.altKey &&
+        (/Mac/i.test(navigator.platform) ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey);
+      const forwardTab = event.key === 'Tab' && !modified && !event.shiftKey;
+      if (!addWithEnter && !forwardTab) return;
+
+      const anchor = window.getSelection()?.anchorNode;
+      const cell = (anchor?.nodeType === Node.ELEMENT_NODE ? anchor : anchor?.parentElement)?.closest('td, th');
+      if (!cell || !editable.contains(cell)) return;
+      const row = cell.parentElement;
+      const table = cell.closest('table');
+      if (forwardTab && (cell.nextElementSibling || table.rows[table.rows.length - 1] !== row)) return;
+
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      if (event.repeat) return;
+      tableCommand(tableActions[1], cell);
+      const next = table.rows[row.rowIndex + 1]?.cells[forwardTab ? 0 : cell.cellIndex];
+      if (next) {
+        window.getSelection().collapse(next, 0);
+        next.scrollIntoView({ block: 'nearest' });
+        selectCell(next);
+      }
+    };
     const selectionChange = () => {
       if (latest.current.mode !== 'live' || !rich.current) return;
       const anchor = window.getSelection()?.anchorNode;
@@ -346,12 +413,13 @@ export function Editor({
       loadVendorScript('vditorLuteScript', 'lute/lute.min.js'),
     ]).then(() => {
       if (!alive) return;
+      const dark = resolveTheme(latest.current.theme).scheme === 'dark';
       instance = new Vditor(host, {
         cdn: vendorRoot,
         value: content.current.raw,
         mode: 'ir',
         lang: 'zh_CN',
-        theme: latest.current.theme === 'dark' ? 'dark' : 'classic',
+        theme: dark ? 'dark' : 'classic',
         icon: '',
         cache: { enable: false },
         height: '100%',
@@ -359,7 +427,12 @@ export function Editor({
         toolbarConfig: { hide: true },
         link: { isOpen: false },
         image: { isPreview: false },
-        preview: { markdown: markdownOptions, render: { media: { enable: false } } },
+        preview: {
+          markdown: markdownOptions,
+          render: { media: { enable: false } },
+          theme: { current: dark ? 'dark' : 'light' },
+          hljs: { style: dark ? 'github-dark' : 'github' },
+        },
         customRenders: ['sequence', 'flow'].map((language) => ({
           language,
           render: (preview) => renderLegacyDiagram(preview, latest.current.theme),
@@ -375,8 +448,9 @@ export function Editor({
           syncRich();
           const editable = instance.vditor.ir.element;
           editable.setAttribute('aria-label', 'Markdown 即时编辑');
+          editable.setAttribute('aria-description', '先按 Escape，再按 Tab 或 Shift+Tab 可移出编辑区。');
           editable.spellcheck = latest.current.spellcheck;
-          if (latest.current.theme === 'dark') instance.setTheme('dark', 'dark');
+          setLiveTheme(instance, latest.current.theme);
           const decorate = () => {
             resolveLiveAssets();
             updateUnderlines(editable);
@@ -393,11 +467,13 @@ export function Editor({
 
     host.addEventListener('input', flush, true);
     host.addEventListener('compositionend', flush, true);
+    host.addEventListener('keydown', editKeys, true);
     document.addEventListener('selectionchange', selectionChange);
     return () => {
       alive = false;
       host.removeEventListener('input', flush, true);
       host.removeEventListener('compositionend', flush, true);
+      host.removeEventListener('keydown', editKeys, true);
       document.removeEventListener('selectionchange', selectionChange);
       observer?.disconnect();
       CSS.highlights?.delete('sujian-underline');
@@ -474,7 +550,7 @@ export function Editor({
     if (rich.current) {
       rich.current.vditor.ir.element.spellcheck = spellcheck;
       rich.current.vditor.options.typewriterMode = typewriter;
-      rich.current.setTheme(theme === 'dark' ? 'dark' : 'classic', theme === 'dark' ? 'dark' : 'light');
+      setLiveTheme(rich.current, theme);
     }
   }, [spellcheck, theme, typewriter, docId]);
 

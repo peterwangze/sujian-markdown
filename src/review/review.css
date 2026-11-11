@@ -5,7 +5,7 @@
   max-height: calc(100dvh - 32px);
 }
 
-:root[data-theme="dark"] .review-modal {
+:root[data-color-scheme="dark"] .review-modal {
   --removed-ink: #ffb39d;
   --added-ink: #8dd6b3;
 }

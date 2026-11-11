@@ -2,12 +2,14 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { desktop } from './desktop.js'
 import { guide } from './example.js'
 import { MAX_LIVE_LENGTH } from './text.js'
+import { FONT_DEFAULTS } from './fonts.js'
 
 export const defaults = {
-  theme: 'paper', mode: 'live', sidebar: true, fontSize: 17, width: 790, focusMode: false,
+  theme: 'paper', mode: 'live', sidebar: true, fontSize: 17, lineHeight: 1.68, width: 790, focusMode: false,
   typewriter: false, spellcheck: true, autoSave: false, resume: true, wrap: true,
   workspace: null, recent: [], pinned: [], openPaths: [], customCss: '', imageFolder: '',
   imageRoot: '', uploader: '', uploaderArgs: '', fileList: false, fileSort: 'name', showHidden: false, remoteMedia: false, hotkeys: {},
+  ...FONT_DEFAULTS,
 }
 
 function createDoc(fields = {}) {

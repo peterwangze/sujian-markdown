@@ -1,19 +1,22 @@
-import { lazy, Suspense, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { FileText, Plus, CircleCheck, AlertTriangle, FolderOpen, ChevronDown, BookOpen } from 'lucide-react'
 import { Editor, renderDocument } from './editor/index.js'
 import { IconButton, Modal, TabStrip } from './ui/Controls.jsx'
 import { Sidebar } from './ui/Sidebar.jsx'
 import { Toolbar } from './ui/Toolbar.jsx'
-import { ExportDialog, FindBar, FolderSearch, QuickOpen, Recovery, Settings, shortcuts } from './ui/Dialogs.jsx'
+import { ExportDialog, FindBar, FolderSearch, GoToLine, QuickOpen, Recovery, Settings } from './ui/Dialogs.jsx'
+import { CommandPalette } from './ui/CommandPalette.jsx'
 import { desktop, native } from './workspace/desktop.js'
 import { headings, localImageSources, MAX_LIVE_LENGTH, slug, updateImageSources, wordCount } from './workspace/text.js'
 import { isDirty, useWorkspace } from './workspace/useWorkspace.js'
 import { SpecCheckDialog, SourceLinkDialog, TemplatesDialog } from './review/WorkflowDialogs.jsx'
 import { sourceLine, workflowTemplates } from './review/workflows.js'
+import { canRunCommand, commandsById, findShortcut, isComposingKey, nativeShortcutOverrides } from './workspace/commands.js'
+import { fontStack, useFonts } from './workspace/fonts.js'
+import { applyTheme, resolveTheme } from './theme/themes.js'
 
 const ReviewDialog = lazy(() => import('./review/ReviewDialog.jsx'))
 
-const nativeShortcuts = new Set(['new-file', 'open-files', 'open-folder', 'save', 'save-as', 'close-tab', 'reopen-tab', 'quick-open', 'find', 'replace', 'search-folder', 'view-source', 'toggle-sidebar', 'toggle-focus', 'toggle-typewriter', 'export', 'settings'])
 const visualExports = new Set(['pdf', 'html', 'html-plain', 'png', 'docx', 'epub', 'print'])
 const leaf = path => path?.split(/[\\/]/).filter(Boolean).at(-1) ?? ''
 
@@ -35,18 +38,6 @@ function resolveLink(base, href) {
   return { target: start.join(separator), anchor }
 }
 
-function keyMatches(event, shortcut) {
-  const keys = shortcut.toLowerCase().split('+').map(key => key.trim())
-  const key = keys.pop()
-  const mod = keys.includes('mod')
-  const mac = desktop.platform === 'darwin'
-  return key === event.key.toLowerCase() &&
-    event.shiftKey === keys.includes('shift') &&
-    event.altKey === (keys.includes('alt') || keys.includes('option')) &&
-    event.ctrlKey === (keys.includes('ctrl') || keys.includes('control') || (mod && !mac)) &&
-    event.metaKey === (keys.includes('cmd') || keys.includes('meta') || (mod && mac))
-}
-
 export default function App() {
   const editor = useRef(null)
   const flushEditor = useCallback(() => editor.current?.getValue(), [])
@@ -58,11 +49,13 @@ export default function App() {
     noticeTimer.current = setTimeout(() => setMessage(null), error ? 7500 : 3000)
   }, [])
   const workspace = useWorkspace(notify, flushEditor)
+  const fonts = useFonts(notify)
   const { docs, active, settings, configure, amend, ready } = workspace
   const [sidebar, setSidebar] = useState('files')
   const [dialog, setDialog] = useState(null)
   const [commandQueue, setCommandQueue] = useState([])
   const [findState, setFindState] = useState(null)
+  const findControl = useRef(null)
   const [selection, setSelection] = useState('')
   const [refresh, setRefresh] = useState(0)
   const [context, setContext] = useState(null)
@@ -73,8 +66,15 @@ export default function App() {
   const mode = active?.mode ?? settings.mode
   const reviewDoc = dialog?.type === 'review' ? docs.find(doc => doc.id === dialog.docId) : null
   const canUndoReview = !!active?.reviewUndo && active.text === active.reviewUndo.after
-  const dark = settings.theme === 'dark' || (settings.theme === 'system' && systemDark)
-  const renderTheme = dark ? 'dark' : 'light'
+  const selectedTheme = resolveTheme(settings.theme, systemDark)
+  const dark = selectedTheme.scheme === 'dark'
+  const renderTheme = selectedTheme.id
+  const activeFonts = fonts.imported.filter(font => !fonts.unavailable.includes(font.id))
+  const fontsCss = `:root{--sans:${fontStack('uiFont', settings.uiFont, activeFonts)};` +
+    `--serif:${fontStack('bodyFont', settings.bodyFont, activeFonts)};--mono:${fontStack('sourceFont', settings.sourceFont, activeFonts)}}`
+  const modalOpen = !!dialog
+  const commandContext = useRef(null)
+  commandContext.current = { active, mode, settings, native, canUndoReview, tabCount: docs.length }
   const deferredText = useDeferredValue(active?.text ?? '')
   const outline = useMemo(() => headings(deferredText), [deferredText])
   const words = useMemo(() => wordCount(deferredText), [deferredText])
@@ -94,13 +94,14 @@ export default function App() {
     return () => media.removeEventListener('change', change)
   }, [])
 
+  useLayoutEffect(() => { applyTheme(document.documentElement, selectedTheme) }, [selectedTheme])
   useEffect(() => {
-    document.documentElement.dataset.theme = dark ? 'dark' : settings.theme === 'light' ? 'light' : 'paper'
-    run(() => desktop.setTitleBarTheme({ dark }))
-  }, [dark, settings.theme, run])
+    run(() => desktop.setTitleBarTheme({ dark, background: selectedTheme.colors.chrome, symbol: selectedTheme.colors.ink }))
+  }, [dark, selectedTheme, run])
 
   useEffect(() => { run(() => desktop.setSpellcheck?.(settings.spellcheck)) }, [settings.spellcheck, run])
-  useEffect(() => { run(() => desktop.setHotkeys?.(settings.hotkeys)) }, [settings.hotkeys, run])
+  useEffect(() => { run(() => desktop.setHotkeys?.(nativeShortcutOverrides(settings.hotkeys))) }, [settings.hotkeys, run])
+  useEffect(() => { run(() => desktop.setMenuShortcutsIgnored?.(modalOpen)) }, [modalOpen, run])
   useEffect(() => { run(() => desktop.setRemoteMedia?.(settings.remoteMedia)) }, [settings.remoteMedia, run])
   useEffect(() => {
     document.title = active ? active.name + ' — 素笺' : '素笺'
@@ -248,7 +249,8 @@ export default function App() {
     const text = flushEditor() ?? active.text
     const html = visualExports.has(format) ? await renderDocument(text, {
       title: active.name, styled: format !== 'html-plain', theme: renderTheme, resolveImage: embeddedImage,
-      allowRemoteMedia: settings.remoteMedia,
+      allowRemoteMedia: settings.remoteMedia, print: format === 'pdf' || format === 'print',
+      typography: { fontSize: settings.fontSize, lineHeight: settings.lineHeight },
     }) : undefined
     const result = await desktop.exportDocument({
       format, html, text, documentPath: active.path, defaultName: active.name,
@@ -360,8 +362,24 @@ export default function App() {
         break
       case 'close-tab': if (active) closeTab(active.id); break
       case 'reopen-tab': run(workspace.reopen); break
+      case 'command-palette': setDialog({ type: 'command-palette' }); break
+      case 'go-to-line': if (active) setDialog({ type: 'go-to-line', docId: active.id, text: flushEditor() ?? active.text }); break
+      case 'next-tab': case 'previous-tab': {
+        if (docs.length < 2) break
+        flushEditor()
+        const index = docs.findIndex(doc => doc.id === active?.id)
+        const next = (index + docs.length + (key === 'next-tab' ? 1 : -1)) % docs.length
+        workspace.select(docs[next].id)
+        requestAnimationFrame(() => editor.current?.focus())
+        break
+      }
       case 'quick-open': setDialog({ type: 'quick' }); break
-      case 'find': case 'replace': if (active) setFindState({ query: editor.current?.getSelection().split('\n')[0], replace: key === 'replace', id: Date.now() }); break
+      case 'find': case 'replace': {
+        if (!active) break
+        if (findControl.current) findControl.current.open(key === 'replace')
+        else setFindState({ query: editor.current?.getSelection().split('\n')[0], replace: key === 'replace', id: Date.now() })
+        break
+      }
       case 'search-folder': setDialog({ type: 'search-folder' }); break
       case 'settings': case 'shortcuts': setDialog({ type: 'settings', panel: key === 'shortcuts' ? 'shortcuts' : 'appearance' }); break
       case 'view-live': setMode('live'); break
@@ -416,21 +434,27 @@ export default function App() {
 
   const actionRef = useRef(action)
   actionRef.current = action
-  useEffect(() => desktop.onMenuAction?.(key => actionRef.current(key)), [])
+  const modalRef = useRef(modalOpen)
+  modalRef.current = modalOpen
+  useEffect(() => desktop.onMenuAction?.(key => {
+    if (!modalRef.current) actionRef.current(key)
+  }), [])
   useEffect(() => {
     function shortcut(event) {
-      if (event.isComposing || event.defaultPrevented || event.repeat) return
-      const match = shortcuts.find(([key, , fallback]) => {
-        const custom = settings.hotkeys[key]?.trim()
-        return (custom || !native || !nativeShortcuts.has(key)) && keyMatches(event, custom || fallback)
-      })
-      if (!match) return
+      if (isComposingKey(event) || modalOpen || event.defaultPrevented || event.repeat) return
+      if (event.key === 'F3' && !event.ctrlKey && !event.metaKey && !event.altKey && findControl.current) {
+        event.preventDefault()
+        findControl.current.next(event.shiftKey)
+        return
+      }
+      const id = findShortcut(event, { hotkeys: settings.hotkeys, platform: desktop.platform, native, modalOpen })
+      if (!id || !canRunCommand(commandsById.get(id), commandContext.current)) return
       event.preventDefault()
-      actionRef.current(match[0])
+      actionRef.current(id)
     }
     document.addEventListener('keydown', shortcut, true)
     return () => document.removeEventListener('keydown', shortcut, true)
-  }, [settings.hotkeys])
+  }, [settings.hotkeys, modalOpen])
 
   useEffect(() => {
     if (!context) return
@@ -470,8 +494,12 @@ export default function App() {
   }
 
   return <div className={'application platform-' + desktop.platform + (settings.sidebar ? ' with-sidebar' : '')}
-    style={{ '--document-width': settings.width + 'px', '--document-font-size': settings.fontSize + 'px' }}
+    style={{
+      '--document-width': settings.width + 'px', '--document-font-size': settings.fontSize + 'px',
+      '--document-line-height': settings.lineHeight,
+    }}
     data-ready={ready}>
+    <style>{fontsCss}</style>
     {settings.customCss && <style>{settings.customCss}</style>}
     <header className="titlebar">
       <div className="brand"><FileText size={21} strokeWidth={1.8}/><span>素笺</span></div>
@@ -489,10 +517,10 @@ export default function App() {
         <div className="topline">
           <TabStrip docs={docs} active={active} isDirty={isDirty} onSelect={id => { flushEditor(); workspace.select(id) }}
             onClose={closeTab} onNew={() => action('new-file')} plus={Plus}/>
-          <Toolbar active={active} mode={mode} setMode={setMode} action={action} command={command} settings={settings} native={native}
+          <Toolbar active={active} mode={mode} setMode={setMode} action={action} command={command} settings={settings} native={native} platform={desktop.platform}
             canUndoReview={canUndoReview}/>
         </div>
-        {findState && active && <FindBar key={findState.id} initial={findState} close={() => { setFindState(null); editor.current?.focus() }}
+        {findState && active && <FindBar key={findState.id} initial={findState} controlRef={findControl} close={() => { setFindState(null); editor.current?.focus() }}
           find={(query, options) => editor.current?.find(query, options)} replace={(query, value, options) => editor.current?.replace(query, value, options) ?? 0}/>}
         {active?.conflict && <div className="conflict" role="status">
           <AlertTriangle size={16}/><span>{active.conflict.document ? '磁盘上的文件已更改' : '磁盘上的文件已移动或删除'}</span>
@@ -500,7 +528,7 @@ export default function App() {
         </div>}
         {active?.text.length > MAX_LIVE_LENGTH && mode === 'source' && <div className="large-note">已为长文档启用源码编辑 <button onClick={() => setMode('live')}>切换到即时渲染</button></div>}
         {active && (
-          <div id="write" className="editor-frame">
+          <div id="write" className="editor-frame" role="tabpanel" aria-labelledby={'doc-tab-' + active.id}>
             <Editor docId={active.id} value={active.text} mode={mode} editorRef={editor}
               onChange={text => amend(active.id, { text })} onSelection={setSelection} onLink={followLink} onImage={insertImages}
               assetUrl={assetUrl} resolveImage={resolveImage} theme={renderTheme}
@@ -548,8 +576,16 @@ export default function App() {
         const id = active.id
         requestAnimationFrame(() => { if (activeId.current === id) command('link', value) })
       }}/>}
-    {dialog?.type === 'settings' && <Settings settings={settings} configure={configure} close={closeDialog} native={native} initialPanel={dialog.panel}/>}
+    {dialog?.type === 'settings' && <Settings settings={settings} configure={configure} close={closeDialog} native={native}
+      fonts={fonts} initialPanel={dialog.panel}/>}
     {dialog?.type === 'quick' && <QuickOpen workspace={workspace} onClose={closeDialog} notify={notify}/>}
+    {dialog?.type === 'command-palette' && <CommandPalette active={active} mode={mode} settings={settings} native={native}
+      canUndoReview={canUndoReview} tabCount={docs.length} platform={desktop.platform} onAction={action} onClose={closeDialog}/>}
+    {dialog?.type === 'go-to-line' && <GoToLine text={dialog.text} onClose={closeDialog} onJump={line => {
+      const doc = workspace.getDocument(dialog.docId)
+      closeDialog()
+      requestAnimationFrame(() => { if (doc?.id === activeId.current) jumpToSource(line, doc) })
+    }}/>}
     {dialog?.type === 'search-folder' && <FolderSearch path={settings.workspace} close={closeDialog} notify={notify}
       jump={(path, line) => run(async () => { flushEditor(); const next = await workspace.openPath(path); jump(line, next); closeDialog() })}/>}
     {dialog?.type === 'export' && active && <ExportDialog name={active.name} close={closeDialog} run={exportFile}/>}

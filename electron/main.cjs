@@ -8,6 +8,7 @@ const { createAssets, scheme: assetScheme } = require('./assets.cjs');
 const { createConversion } = require('./conversion.cjs');
 const { documentExtension, getDocument, pathKey, saveDocument } = require('./documents.cjs');
 const { createFileOperations } = require('./file-operations.cjs');
+const { acceptedExtensions: fontExtensions, createFontStore, fontRoute } = require('./fonts.cjs');
 const { createStorage } = require('./storage.cjs');
 const { createWatcher } = require('./watcher.cjs');
 const { findDocuments, listDirectory, searchDirectory } = require('./workspace.cjs');
@@ -49,9 +50,10 @@ function trustedRenderer(address) {
   }
 }
 
-function appProtocol(request) {
+function appProtocol(request, fonts) {
   const url = new URL(request.url);
   if (url.hostname !== 'editor' || !['GET', 'HEAD'].includes(request.method)) return new Response(null, { status: 404 });
+  if (url.pathname.startsWith(fontRoute)) return fonts.respond(request);
   const root = path.join(app.getAppPath(), 'dist');
   let target;
   try {
@@ -282,7 +284,7 @@ function setHotkeys(hotkeys) {
   currentHotkeys = signature;
 }
 
-function installIpc({ assets, conversion, storage, operations }) {
+function installIpc({ assets, conversion, fonts, storage, operations }) {
   const handle = (name, callback) => ipcMain.handle(`sujian:${name}`, (event, ...args) => {
     const window = BrowserWindow.fromWebContents(event.sender);
     const state = states.get(window?.id);
@@ -377,6 +379,16 @@ function installIpc({ assets, conversion, storage, operations }) {
   handle('delete-draft', (_state, id) => storage.deleteDraft(id));
   handle('load-preferences', () => storage.loadPreferences());
   handle('save-preferences', (_state, preferences) => storage.savePreferences(preferences));
+  handle('list-fonts', () => fonts.listFonts());
+  handle('import-fonts', async ({ window }) => {
+    const selected = await dialog.showOpenDialog(window, {
+      title: '导入字体',
+      properties: ['openFile', 'multiSelections'],
+      filters: [{ name: '字体文件', extensions: fontExtensions }],
+    });
+    return fonts.importFonts(selected.canceled ? [] : selected.filePaths);
+  });
+  handle('remove-font', (_state, id) => fonts.removeFont(id));
   handle('import-image', ({ window }, options) => assets.importImage(window, options));
   handle('resolve-image', (_state, options) => assets.resolveImage(options));
   handle('upload-images', (_state, options) => assets.uploadImages(options));
@@ -396,13 +408,19 @@ function installIpc({ assets, conversion, storage, operations }) {
     window.setFullScreen(next);
     return next;
   });
-  handle('set-title-bar-theme', ({ window }, { dark }) => {
+  handle('set-title-bar-theme', ({ window }, { dark, background, symbol } = {}) => {
+    const color = value => typeof value === 'string' && /^#[a-f0-9]{6}$/i.test(value);
     if (process.platform !== 'darwin') window.setTitleBarOverlay({
-      color: dark ? '#25272c' : '#f5f6f9', symbolColor: dark ? '#eceef2' : '#374151', height: 36,
+      color: color(background) ? background : dark ? '#25272c' : '#f5f6f9',
+      symbolColor: color(symbol) ? symbol : dark ? '#eceef2' : '#374151',
+      height: 36,
     });
   });
   handle('set-spellcheck', ({ window }, enabled) => window.webContents.session.setSpellCheckerEnabled(Boolean(enabled)));
   handle('set-hotkeys', (_state, hotkeys) => setHotkeys(hotkeys));
+  handle('set-menu-shortcuts-ignored', ({ window }, enabled) => {
+    window.webContents.setIgnoreMenuShortcuts(Boolean(enabled));
+  });
   handle('set-remote-media', (_state, enabled) => { remoteMediaAllowed = Boolean(enabled); });
   handle('manage-close', (state, enabled) => { state.closeManaged = Boolean(enabled); });
   handle('finish-close', (state, shouldClose = true) => {
@@ -420,7 +438,11 @@ async function launch(initialCommand) {
   const userDataPath = app.getPath('userData');
   const assets = createAssets({ userDataPath, knownDocuments });
   const conversion = createConversion({ assets, userDataPath });
-  protocol.handle(appScheme, appProtocol);
+  const fonts = createFontStore(userDataPath, {
+    origin: `${appScheme}://editor`,
+    devOrigin: devUrl ? new URL(devUrl).origin : undefined,
+  });
+  protocol.handle(appScheme, request => appProtocol(request, fonts));
   protocol.handle(assetScheme, assets.handleRequest);
   session.defaultSession.webRequest.onBeforeRequest({ urls: ['http://*/*', 'https://*/*'] }, (request, done) => {
     done({ cancel: !remoteMediaAllowed && ['image', 'media'].includes(request.resourceType) });
@@ -428,7 +450,7 @@ async function launch(initialCommand) {
   const storage = createStorage(userDataPath);
   const preferences = await storage.loadPreferences().catch(() => ({}));
   remoteMediaAllowed = Boolean(preferences?.remoteMedia);
-  installIpc({ assets, conversion, storage, operations: createFileOperations() });
+  installIpc({ assets, conversion, fonts, storage, operations: createFileOperations() });
   setHotkeys(preferences?.hotkeys);
   servicesReady = true;
   const timeout = smokeTest ? setTimeout(() => { console.error('Sujian desktop smoke test timed out.'); app.exit(1); }, 20000) : null;
@@ -460,6 +482,16 @@ async function launch(initialCommand) {
         return saved.status === 'ok' && opened.text === text && search.matches.length === 1;
       })()`);
       if (!fileBridgeReady) throw new Error('The desktop file bridge did not pass the smoke test.');
+      const fontBridgeReady = await window.webContents.executeJavaScript(`(async () => {
+        const fonts = await window.sujian.listFonts();
+        const samples = [
+          ['Inter', 'Latin'], ['Source Serif 4', 'Latin'], ['JetBrains Mono', 'Latin'],
+          ['Noto Sans SC', '中文'], ['Noto Serif SC', '中文'],
+        ];
+        const loaded = await Promise.all(samples.map(([family, text]) => document.fonts.load('16px "' + family + '"', text)));
+        return fonts.length === 0 && loaded.every(faces => faces.some(face => face.status === 'loaded'));
+      })()`);
+      if (!fontBridgeReady) throw new Error('The desktop font bridge or bundled fonts did not pass the smoke test.');
       console.log('Sujian desktop smoke test passed.');
       window.destroy();
       exitCode = 0;

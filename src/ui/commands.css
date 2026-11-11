@@ -1,0 +1,45 @@
+.modal.command-palette { width: min(550px, calc(100vw - 32px)); }
+.command-palette .search-input svg, .shortcut-settings .search-input svg { color: var(--muted); flex-shrink: 0; }
+.command-results {
+  list-style: none;
+  padding: 3px;
+  margin: 9px 0;
+  max-height: min(46vh, 385px);
+  overflow: auto;
+}
+.command-results li, .shortcut-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.command-results li { padding: 6px 9px; border-radius: 5px; cursor: pointer; }
+.command-results li[aria-selected="true"] { background: var(--selected); }
+.command-results li > span, .shortcut-summary > span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.command-results small, .shortcut-summary small { display: block; color: var(--muted); font-size: 11px; }
+.command-instructions { display: flex; align-items: center; gap: 5px; margin: 0; color: var(--muted); font-size: 11px; }
+.command-results kbd, .command-instructions kbd, .shortcut-summary kbd, .tool-menu-shortcut {
+  display: inline-block;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1px 5px;
+  color: var(--muted);
+  background: var(--surface);
+  white-space: nowrap;
+  font: 11px/1.4 var(--mono);
+}
+.shortcut-settings { padding-top: 8px; }
+.shortcut-settings-list { max-height: min(55vh, 470px); overflow: auto; margin-top: 7px; }
+.shortcut-entry { padding: 7px 2px; border-bottom: 1px solid var(--faint-border); }
+.shortcut-summary button, .shortcut-record button { padding: 4px 7px; white-space: nowrap; }
+.shortcut-record { display: flex; align-items: center; gap: 6px; padding: 7px 0 0; }
+.shortcut-record input { flex: 1; min-width: 0; }
+.shortcut-entry .form-error { margin: 4px 0; }
+.tool-menu-shortcut { margin-left: auto; }
+.tool-menu-list button:has(.tool-menu-shortcut) { min-width: min(225px, 72vw); }
+.topline > .toolbar { flex: 0 0 auto; }
+.tab-strip > .tabs { overscroll-behavior-inline: contain; }
+.tabs [role="tab"]:focus-visible { outline-offset: -2px; }
+
+@media (max-width: 900px) {
+  .format-tools > .compact-format { display: none; }
+}
