@@ -4,7 +4,7 @@ import { Editor, renderDocument } from './editor/index.js'
 import { IconButton, Modal, TabStrip } from './ui/Controls.jsx'
 import { Sidebar } from './ui/Sidebar.jsx'
 import { Toolbar } from './ui/Toolbar.jsx'
-import { ExportDialog, FindBar, FolderSearch, GoToLine, QuickOpen, Recovery, Settings } from './ui/Dialogs.jsx'
+import { ExportDialog, FindBar, FolderSearch, GoToLine, NewFileDialog, QuickOpen, Recovery, Settings } from './ui/Dialogs.jsx'
 import { CommandPalette } from './ui/CommandPalette.jsx'
 import { DocumentContextMenu } from './ui/DocumentContextMenu.jsx'
 import { desktop, native } from './workspace/desktop.js'
@@ -12,7 +12,7 @@ import { headings, localImageSources, MAX_LIVE_LENGTH, slug, updateImageSources,
 import { isDirty, useWorkspace } from './workspace/useWorkspace.js'
 import { SpecCheckDialog, SourceLinkDialog, TemplatesDialog } from './review/WorkflowDialogs.jsx'
 import { sourceLine, workflowTemplates } from './review/workflows.js'
-import { canRunCommand, commandsById, findShortcut, isComposingKey, nativeShortcutOverrides } from './workspace/commands.js'
+import { canRunCommand, commandsById, findShortcut, isComposingKey, isReassignedEditorShortcut, nativeShortcutOverrides } from './workspace/commands.js'
 import { fontStack, useFonts } from './workspace/fonts.js'
 import { applyTheme, resolveTheme } from './theme/themes.js'
 
@@ -63,10 +63,17 @@ export default function App() {
   const findControl = useRef(null)
   const [selection, setSelection] = useState('')
   const [refresh, setRefresh] = useState(0)
+  const [folderToExpand, setFolderToExpand] = useState(null)
+  const [createdFileFocus, setCreatedFileFocus] = useState(null)
   const [context, setContext] = useState(null)
   const [systemDark, setSystemDark] = useState(() => matchMedia('(prefers-color-scheme: dark)').matches)
   const activeId = useRef(null)
   activeId.current = active?.id
+  useEffect(() => {
+    if (!createdFileFocus) return
+    if (active?.id === createdFileFocus) editor.current?.focus()
+    setCreatedFileFocus(null)
+  }, [active?.id, createdFileFocus])
   const requestedJump = useRef(null)
   const mode = active?.mode ?? settings.mode
   const reviewDoc = dialog?.type === 'review' ? docs.find(doc => doc.id === dialog.docId) : null
@@ -370,6 +377,8 @@ export default function App() {
   }, [commandQueue, dialog, notify])
 
   function action(key) {
+    const editing = commandsById.get(key)
+    if (editing?.editorCommand) return command(editing.editorCommand, editing.editorPayload)
     switch (key) {
       case 'new-file': flushEditor(); workspace.add(); break
       case 'new-window': run(() => desktop.newWindow?.()); break
@@ -416,6 +425,7 @@ export default function App() {
       case 'toggle-typewriter': configure({ typewriter: !settings.typewriter }); break
       case 'toggle-dark': configure({ theme: dark ? 'paper' : 'dark' }); break
       case 'fullscreen': run(() => desktop.toggleFullscreen()); break
+      case 'reset-zoom': run(() => desktop.resetZoom?.()); break
       case 'pin-folder': if (settings.workspace && !settings.pinned.includes(settings.workspace)) configure({ pinned: [...settings.pinned, settings.workspace] }); break
       case 'image':
         if (mode === 'read') notify('切换到编辑模式后即可插入图片。')
@@ -434,7 +444,7 @@ export default function App() {
         break
       }
       case 'copy-markdown':
-        run(() => desktop.writeClipboard({ text: editor.current?.getSelection() || flushEditor() || '' }))
+        run(() => desktop.writeClipboard({ text: editor.current?.getLiveMarkdownSelection() || editor.current?.getSelection() || flushEditor() || '' }))
         break
       case 'copy-rich': case 'copy-html': case 'copy-plain':
         run(async () => {
@@ -466,14 +476,24 @@ export default function App() {
   }), [])
   useEffect(() => {
     function shortcut(event) {
-      if (isComposingKey(event) || modalOpen || event.defaultPrevented || event.repeat) return
-      if (event.key === 'F3' && !event.ctrlKey && !event.metaKey && !event.altKey && findControl.current) {
+      if (!event.isTrusted || isComposingKey(event) || modalOpen || event.defaultPrevented) return
+      if (!event.repeat && event.key === 'F3' && !event.ctrlKey && !event.metaKey && !event.altKey && findControl.current) {
         event.preventDefault()
         findControl.current.next(event.shiftKey)
         return
       }
-      const id = findShortcut(event, { hotkeys: settings.hotkeys, platform: desktop.platform, native, modalOpen })
-      if (!id || !canRunCommand(commandsById.get(id), commandContext.current)) return
+      const options = { hotkeys: settings.hotkeys, platform: desktop.platform, native }
+      const id = findShortcut(event, { ...options, allowRepeat: true })
+      const shortcut = commandsById.get(id)
+      const editing = !event.target?.closest?.('input, textarea, select, [contenteditable="false"]') &&
+        event.target?.closest?.('.editor-live [contenteditable="true"], .editor-source .cm-content')
+      const preview = id === 'copy-markdown' && event.target?.closest?.('.editor-preview')
+      const editorShortcut = shortcut?.editorCommand || shortcut?.editorOnly
+      if (editorShortcut ? editing || preview : editing && !shortcut && isReassignedEditorShortcut(event, options)) {
+        event.preventDefault()
+        event.stopPropagation()
+      }
+      if (event.repeat || !shortcut || (editorShortcut && !editing && !preview) || !canRunCommand(shortcut, commandContext.current)) return
       event.preventDefault()
       actionRef.current(id)
     }
@@ -506,7 +526,7 @@ export default function App() {
   }, [context, run])
 
   function contextGroups(item) {
-    if (item.kind === 'directory') return [[['mkdir', '新建子文件夹'],
+    if (item.kind === 'directory') return [[...(desktop.createFile ? [['create-file', '新建文件…']] : []), ['mkdir', '新建子文件夹'],
       settings.pinned.includes(item.path) ? ['unpin', '取消固定'] : ['pin', '固定文件夹']], fileActions]
     const documentActions = [['review', '审阅修订稿']]
     if (contextDoc?.reviewUndo && contextDoc.text === contextDoc.reviewUndo.after) documentActions.push(['undo-review', '撤销本次审阅'])
@@ -576,12 +596,23 @@ export default function App() {
       else if (item.path) run(() => openDocumentPath(item.path))
     }
     if (key === 'close-document' && doc) closeTab(doc.id)
-    if (key === 'rename' || key === 'trash' || key === 'mkdir' || key === 'move') setDialog({ type: key, item })
+    if (['create-file', 'rename', 'trash', 'mkdir', 'move'].includes(key)) setDialog({ type: key, item })
     if (key === 'reveal') run(() => desktop.showItemInFolder(item.path))
     if (key === 'duplicate') run(async () => { await desktop.duplicatePath(item.path); setRefresh(previous => previous + 1) })
     if (key === 'undo') run(async () => { await desktop.undoFileOperation(); setRefresh(previous => previous + 1) })
     if (key === 'pin' && !settings.pinned.includes(item.path)) configure({ pinned: [...settings.pinned, item.path] })
     if (key === 'unpin') configure({ pinned: settings.pinned.filter(path => path !== item.path) })
+  }
+
+  async function createFileInFolder(folder, name) {
+    const path = await desktop.createFile(folder, name)
+    setFolderToExpand({ path: folder })
+    setRefresh(previous => previous + 1)
+    closeDialog()
+    await run(async () => {
+      const doc = await openDocumentPath(path)
+      setCreatedFileFocus(doc.id)
+    })
   }
 
   function submitPath(key, value) {
@@ -613,7 +644,7 @@ export default function App() {
     </header>
     <div className="workbench">
       {settings.sidebar && <Sidebar workspace={workspace} sidebar={sidebar} setSidebar={setSidebar} outline={outline}
-        jump={jump} openFolder={openFolder} searchFolder={() => action('search-folder')} refresh={refresh} notify={notify}
+        jump={jump} openFolder={openFolder} searchFolder={() => action('search-folder')} refresh={refresh} folderToExpand={folderToExpand} notify={notify}
         openRecovery={() => setDialog({ type: 'recovery' })} onContext={openContext}
         onOpenPath={openDocumentPath} onSelectDocument={selectDocument}/>}
       <main className="work-area" onDragOver={event => {
@@ -761,6 +792,8 @@ export default function App() {
       </form>
     </Modal>}
     {context && <DocumentContextMenu context={context} groups={contextGroups(context.item)} onAction={contextAction} onDismiss={dismissContext}/>}
+    {dialog?.type === 'create-file' && <NewFileDialog folder={dialog.item.path} close={closeDialog}
+      create={name => createFileInFolder(dialog.item.path, name)}/>}
     {['rename', 'move', 'mkdir'].includes(dialog?.type) && <Modal title={{ rename: '重命名', move: '移动到文件夹', mkdir: '新建子文件夹' }[dialog.type]} onClose={closeDialog}>
       <form onSubmit={event => { event.preventDefault(); submitPath(dialog.type, new FormData(event.currentTarget).get('name')) }}>
         <label className="text-setting">{dialog.type === 'move' ? '目标文件夹的完整路径' : '名称'}

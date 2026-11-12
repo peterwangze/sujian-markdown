@@ -1,20 +1,25 @@
 import { useId, useMemo, useState } from 'react'
 import { Search } from 'lucide-react'
 import { commandGroup, commandScore, configurableCommands, displayShortcut, effectiveShortcut, isComposingKey,
-  normalizeShortcut, shortcutAssignmentError, shortcutFromEvent } from '../workspace/commands.js'
+  normalizeShortcut, shortcutAssignmentError, shortcutDefaultOverride, shortcutFromEvent } from '../workspace/commands.js'
 import './commands.css'
+
+function shortcutInputValue(shortcut, platform) {
+  return shortcut.replace(/^Mod\+/, platform === 'darwin' ? 'Cmd+' : 'Ctrl+')
+}
 
 export function ShortcutSettings({ hotkeys, platform, onChange }) {
   const [query, setQuery] = useState('')
   const [edit, setEdit] = useState(null)
   const feedbackId = useId()
   const matches = useMemo(() => configurableCommands.filter(command => commandScore(command, query) >= 0), [query])
-  const error = edit?.value ? shortcutAssignmentError(edit.id, edit.value, hotkeys, platform) : ''
+  const binding = edit?.recorded ?? edit?.value
+  const error = binding ? shortcutAssignmentError(edit.id, binding, hotkeys, platform) : ''
 
   function save(event) {
     event.preventDefault()
-    if (error || !edit?.value) return
-    onChange({ ...hotkeys, [edit.id]: normalizeShortcut(edit.value) })
+    if (error || !binding) return
+    onChange({ ...hotkeys, [edit.id]: normalizeShortcut(binding) })
     setEdit(null)
   }
 
@@ -37,7 +42,7 @@ export function ShortcutSettings({ hotkeys, platform, onChange }) {
     if (!value) return
     event.preventDefault()
     event.stopPropagation()
-    setEdit(previous => previous ? { ...previous, value } : previous)
+    setEdit(previous => previous ? { ...previous, value: shortcutInputValue(value, platform), recorded: value } : previous)
   }
 
   return <div className="shortcut-settings">
@@ -50,17 +55,23 @@ export function ShortcutSettings({ hotkeys, platform, onChange }) {
       {matches.map(command => {
         const value = displayShortcut(effectiveShortcut(command, hotkeys, platform), platform)
         const isCustom = Boolean(hotkeys?.[command.id]?.trim?.())
+        const defaultOverride = !value && shortcutDefaultOverride(command, hotkeys, platform)
         return <section className="shortcut-entry" key={command.id} aria-label={command.label}>
           <div className="shortcut-summary">
-            <span>{command.label}<small>{commandGroup(command)}</small></span>
+            <span>{command.label}<small>{commandGroup(command)}</small>
+              {defaultOverride && <small>默认键已分配给「{defaultOverride.label}」</small>}
+            </span>
             {value ? <kbd>{value}</kbd> : <small>未设置</small>}
             {edit?.id !== command.id && <button type="button" aria-label={`设置${command.label}快捷键`}
-              onClick={() => setEdit({ id: command.id, value: hotkeys?.[command.id] ?? '' })}>更改</button>}
+              onClick={() => {
+                const recorded = normalizeShortcut(hotkeys?.[command.id]) ?? ''
+                setEdit({ id: command.id, value: shortcutInputValue(recorded, platform), recorded })
+              }}>更改</button>}
             {isCustom && <button type="button" aria-label={`恢复${command.label}默认快捷键`} onClick={() => reset(command.id)}>恢复默认</button>}
           </div>
           {edit?.id === command.id && <form onSubmit={save}>
             <div className="shortcut-record">
-              <input autoFocus aria-label={`${command.label}的新快捷键`} placeholder="按下组合键或输入 Ctrl+..."
+              <input autoFocus aria-label={`${command.label}的新快捷键`} placeholder={platform === 'darwin' ? '按下组合键或输入 Cmd+...' : '按下组合键或输入 Ctrl+...'}
                 spellCheck={false} value={edit.value} aria-invalid={Boolean(error)} aria-describedby={error ? feedbackId : undefined}
                 onChange={event => setEdit({ id: command.id, value: event.target.value })} onKeyDown={record}/>
               <button type="submit" className="primary" disabled={!edit.value || Boolean(error)}>保存</button>

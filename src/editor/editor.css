@@ -29,7 +29,7 @@
 .editor-source .cm-editor.cm-focused { outline: none; }
 .editor-source .cm-activeLine { background: transparent; }
 .editor-source .cm-editor { color: var(--ink); caret-color: var(--accent-ink); }
-.editor-surface ::selection { color: var(--ink); background: var(--selection); }
+.editor-surface ::selection { color: var(--ink); background: var(--selection, var(--selected)); }
 .editor-focus-mode .editor-source .cm-line:not(.cm-activeLine) { opacity: .45; }
 .editor-typewriter .editor-source .cm-scroller { padding-block: 35vh; }
 .editor-live .vditor {

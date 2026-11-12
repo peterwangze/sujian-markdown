@@ -3,7 +3,7 @@ import { Bold, Italic, List, ListOrdered, Table2, Link, Search, Settings2, Chevr
   PanelLeft, MoreHorizontal, FileText, FolderOpen, Save, FileOutput, FileInput, Image,
   Code, Quote, Minus, SquareCheck, Strikethrough, Sigma, Network, Focus, Maximize, Undo2, Redo2, Keyboard,
   Columns2, BookOpen, Copy, Pin, Printer, Moon, FileDiff, ClipboardCheck, Command } from 'lucide-react'
-import { commandsById, displayShortcut, effectiveShortcut, isComposingKey } from '../workspace/commands.js'
+import { commandsById, displayShortcut, effectiveShortcut, headingCommands, isComposingKey } from '../workspace/commands.js'
 import { IconButton } from './Controls.jsx'
 import './commands.css'
 
@@ -108,13 +108,13 @@ export function Toolbar({ active, mode, setMode, action, command, settings, nati
   const labelWithShortcut = (label, key) => [label, shortcut(key)].filter(Boolean).join(' · ')
   const act = (name, icon, key, disabled = false) => ({ name, icon, run: () => action(key), disabled, shortcut: shortcut(key) })
   const canFormat = Boolean(active) && mode !== 'read'
-  const fmt = (name, icon, key) => ({ name, icon, run: () => command(key), disabled: !canFormat })
-  const icon = (Icon, label, key, className) => <IconButton icon={Icon} label={label} disabled={!canFormat} className={className}
+  const fmt = (name, icon, key) => ({ name, icon, run: () => command(key), disabled: !canFormat, shortcut: shortcut(key) })
+  const icon = (Icon, label, key, className) => <IconButton icon={Icon} label={label} title={labelWithShortcut(label, key)} disabled={!canFormat} className={className}
     onMouseDown={event => event.preventDefault()} onClick={() => command(key)}/>
   return <div className="toolbar" role="toolbar" aria-label="编辑工具">
     {!settings.sidebar && <IconButton icon={PanelLeft} label="显示侧栏" onClick={() => action('toggle-sidebar')}/>}
     <div className="format-tools">
-      <Menu label="标题级别" preserveEditor items={[1, 2, 3, 4, 5, 6].map(level => ({ name: level + ' 级标题', run: () => command('heading', level), disabled: !canFormat }))}>H₁</Menu>
+      <Menu label="标题级别" preserveEditor items={headingCommands.map(({ id, label }) => act(label, null, id, !canFormat))}>H₁</Menu>
       {icon(Bold, '加粗', 'bold')}{icon(Italic, '斜体', 'italic')}
       <div className="wide-tools">{icon(List, '无序列表', 'list')}{icon(ListOrdered, '有序列表', 'ordered-list')}</div>
       {icon(Table2, '插入表格', 'table', 'compact-format')}{icon(Link, '插入链接', 'link', 'compact-format')}

@@ -9,6 +9,51 @@ function markerType(list) {
   return list.tagName === 'OL' ? marker?.at(-1) : marker;
 }
 
+export function handleRichListTrigger(event, editable, engine) {
+  if (event.inputType !== 'insertText' || event.data !== ' ' || !event.cancelable || event.defaultPrevented ||
+      event.isComposing || engine.ir.composingLock) return false;
+  const document = editable.ownerDocument;
+  const selection = document.getSelection();
+  if (!selection?.rangeCount || !editable.contains(selection.anchorNode)) return false;
+  if (!selection.isCollapsed) {
+    // Chromium can represent one caret at the end of a text node as two
+    // adjacent DOM endpoints. Only ignore that difference for an empty range.
+    const selected = selection.getRangeAt(0).cloneContents();
+    if (selected.textContent || selected.firstElementChild) return false;
+  }
+  const { anchorNode, anchorOffset } = selection;
+  const element = anchorNode.nodeType === Node.ELEMENT_NODE ? anchorNode : anchorNode.parentElement;
+  if (element.closest('code, td, th, [contenteditable="false"], .vditor-ir__node, [data-type="footnotes-block"]')) return false;
+  const block = element.closest('p[data-block="0"], li');
+  if (!block || !editable.contains(block)) return false;
+
+  const prefix = document.createRange();
+  prefix.selectNodeContents(block);
+  prefix.setEnd(anchorNode, anchorOffset);
+  const marker = prefix.toString().replaceAll('\u200b', '');
+  if (marker !== '*' && marker !== '-' && marker !== '+') return false;
+
+  const inItem = block.tagName === 'LI';
+  if (inItem && (block.querySelector('ul, ol, input') || block.textContent.replaceAll('\u200b', '') !== marker)) return false;
+  event.preventDefault();
+  const list = document.createElement('ul');
+  list.dataset.block = '0';
+  list.dataset.tight = 'true';
+  list.dataset.marker = marker;
+  const item = document.createElement('li');
+  item.dataset.marker = marker;
+  prefix.deleteContents();
+  item.append(...block.childNodes);
+  list.append(item);
+  if (inItem) block.append(list);
+  else block.replaceWith(list);
+  selection.collapse(item, 0);
+  // The empty item must stay in the live DOM until the user begins typing it.
+  engine.ir.preventInput = true;
+  editable.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText' }));
+  return true;
+}
+
 function liftListItems(editable, engine, selection, list, parent, items, following) {
   const { anchorNode, anchorOffset, focusNode, focusOffset } = selection;
   const destination = parent.parentElement;

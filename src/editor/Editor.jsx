@@ -17,18 +17,21 @@ import { formatMarkdown } from './format.js';
 import { createLiveHtmlDetails } from './live-html-details.js';
 import { decorateLiveInlineHtml } from './live-html-inline.js';
 import { decorateLiveSpellcheck } from './live-spellcheck.js';
+import { formatLiveSelection } from './live-inline-format.js';
 import { openEnclosingDetails, scrollToMarkdownAnchor } from './markdown-anchors.js';
 import { matchMarkdown, projectMarkdownEdit, replacementText } from './markdown-edits.js';
 import { handleRichCodeKeys } from './rich-code-keys.js';
-import { handleRichListKeys } from './rich-list-keys.js';
+import { handleRichListKeys, handleRichListTrigger } from './rich-list-keys.js';
 import { handleRichHardBreak, handleRichParagraphKeys } from './rich-paragraph-keys.js';
-import { sourceKeys } from './source-keys.js';
+import { formatSourceInlineSelection, removeSourceInlineFormat, setSourceHeading } from './source-format.js';
+import { indentSource, sourceKeys } from './source-keys.js';
 import { sourceSpellcheckExclusions } from './source-spellcheck.js';
 import { highlightCode, isLocalImage, loadVendorScript, markdownOptions, renderLegacyDiagram, renderLiveGithubMath, renderPreview, vendorRoot } from './render-document.js';
 import './editor.css';
 
 const nativeCommands = ['bold', 'italic', 'strike', 'inline-code', 'quote', 'list', 'ordered-list', 'check', 'indent', 'outdent', 'undo', 'redo'];
-const lineCommands = ['heading', 'quote', 'list', 'ordered-list', 'check', 'indent', 'outdent'];
+const lineCommands = ['quote', 'list', 'ordered-list', 'check'];
+const managedLiveTools = ['headings', ...nativeCommands.filter(name => name !== 'undo' && name !== 'redo'), 'link', 'code', 'line', 'table'];
 const sourceText = (value) => value.replace(/\r\n?/g, '\n');
 const externalEdit = Annotation.define();
 const sourceSyntax = HighlightStyle.define([
@@ -43,7 +46,7 @@ const sourceSyntax = HighlightStyle.define([
 ]);
 const sourceAppearance = EditorView.theme({
   '&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground, & .cm-selectionBackground': {
-    backgroundColor: 'var(--selection)',
+    backgroundColor: 'var(--selection, var(--selected))',
   },
   '& .cm-cursor, & .cm-dropCursor': { borderLeftColor: 'var(--accent-ink)' },
 });
@@ -111,6 +114,27 @@ function bindCodeCopy(_code, menu) {
     if (event.key === 'Enter' || event.key === ' ') void copy(event);
   });
   trigger.addEventListener('pointerenter', () => trigger.setAttribute('aria-label', '复制'));
+}
+
+function liveSelectionMarkdown(instance, range) {
+  const container = document.createElement('div');
+  let contents = range.cloneContents();
+  const start = range.commonAncestorContainer;
+  const editable = instance.vditor.ir.element;
+  for (let element = start.nodeType === Node.ELEMENT_NODE ? start : start.parentElement;
+    element && element !== editable; element = element.parentElement) {
+    const wrapper = element.parentElement;
+    if (!element.matches('strong, em, s, code') || !wrapper?.matches('.vditor-ir__node')) continue;
+    const [opening, closing] = [wrapper.firstElementChild, wrapper.lastElementChild];
+    if (!opening?.matches('.vditor-ir__marker') || !closing?.matches('.vditor-ir__marker') || opening === closing) continue;
+    const clone = wrapper.cloneNode(false);
+    const body = element.cloneNode(false);
+    body.append(contents);
+    clone.append(opening.cloneNode(true), body, closing.cloneNode(true));
+    contents = clone;
+  }
+  container.append(contents);
+  return instance.vditor.lute.VditorIRDOM2Md(container.innerHTML).trimEnd() || range.toString();
 }
 
 function visibleText(editor) {
@@ -220,6 +244,7 @@ export function Editor({
   const sourceHost = useRef(null);
   const previewHost = useRef(null);
   const rich = useRef(null);
+  const pendingLiveFocus = useRef(null);
   const source = useRef(null);
   const wrapping = useRef(new Compartment());
   const sourceSpelling = useRef(new Compartment());
@@ -433,9 +458,21 @@ export function Editor({
       });
     };
     let tabExitUntil = 0;
+    const editBeforeInput = (event) => {
+      const editable = instance?.vditor.ir.element;
+      if (editable?.contains(event.target)) handleRichListTrigger(event, editable, instance.vditor);
+    };
     const editKeys = (event) => {
       const editable = instance?.vditor.ir.element;
-      if (!editable?.contains(event.target) || isComposingKey(event) || event.defaultPrevented) return;
+      if (!editable?.contains(event.target)) return;
+      // Vditor handles these chords outside its toolbar shortcut configuration.
+      if (event.altKey && event.ctrlKey !== event.metaKey && !event.shiftKey && /^Digit[1-9]$/.test(event.code)) {
+        event.stopImmediatePropagation();
+        return;
+      }
+      if (isComposingKey(event) || event.defaultPrevented) return;
+      // Shift itself is part of the documented Escape → Shift+Tab exit.
+      if (event.key === 'Shift') return;
       const nextTabExits = performance.now() < tabExitUntil;
       tabExitUntil = 0;
       if (event.key === 'Escape') {
@@ -454,10 +491,21 @@ export function Editor({
       const addWithEnter = event.key === 'Enter' && !event.shiftKey && !event.altKey &&
         (/Mac/i.test(navigator.platform) ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey);
       const forwardTab = event.key === 'Tab' && !modified && !event.shiftKey;
-      if (!addWithEnter && !forwardTab) return;
+      const backwardTab = event.key === 'Tab' && !modified && event.shiftKey;
+      if (!addWithEnter && !forwardTab && !backwardTab) return;
 
-      const anchor = window.getSelection()?.anchorNode;
+      const selection = window.getSelection();
+      const anchor = backwardTab && selection?.rangeCount ? selection.getRangeAt(0).startContainer : selection?.anchorNode;
       const cell = (anchor?.nodeType === Node.ELEMENT_NODE ? anchor : anchor?.parentElement)?.closest('td, th');
+      if (backwardTab) {
+        // The table handles reverse navigation. In other blocks without an
+        // indentation action, keep the caret or selection until Escape is used.
+        if (!cell || !editable.contains(cell)) {
+          event.preventDefault();
+          event.stopImmediatePropagation();
+        }
+        return;
+      }
       if (!cell || !editable.contains(cell)) return;
       const row = cell.parentElement;
       const table = cell.closest('table');
@@ -519,7 +567,7 @@ export function Editor({
         icon: '',
         cache: { enable: false },
         height: '100%',
-        toolbar: ['headings', ...nativeCommands, 'link', 'code', 'line', 'table'],
+        toolbar: [...managedLiveTools.map(name => ({ name, hotkey: '' })), 'undo', 'redo'],
         toolbarConfig: { hide: true },
         link: { isOpen: false },
         image: { isPreview: false },
@@ -565,6 +613,8 @@ export function Editor({
           observer = new MutationObserver(decorate);
           observer.observe(editable, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['src'] });
           decorate();
+          if (latest.current.mode === 'live' && pendingLiveFocus.current === content.current.id) instance.focus();
+          pendingLiveFocus.current = null;
         },
       });
     }).catch((error) => {
@@ -572,12 +622,14 @@ export function Editor({
     });
 
     host.addEventListener('input', flush, true);
+    host.addEventListener('beforeinput', editBeforeInput, true);
     host.addEventListener('compositionend', flush, true);
     host.addEventListener('keydown', editKeys, true);
     document.addEventListener('selectionchange', selectionChange);
     return () => {
       alive = false;
       host.removeEventListener('input', flush, true);
+      host.removeEventListener('beforeinput', editBeforeInput, true);
       host.removeEventListener('compositionend', flush, true);
       host.removeEventListener('keydown', editKeys, true);
       document.removeEventListener('selectionchange', selectionChange);
@@ -710,6 +762,10 @@ export function Editor({
       view.focus();
       if (name === 'undo') return undo(view);
       if (name === 'redo') return redo(view);
+      if (name === 'heading') return setSourceHeading(view, Number(payload?.level ?? payload ?? 1));
+      if (name === 'indent' || name === 'outdent') return indentSource(view, name === 'outdent');
+      if (removeSourceInlineFormat(view, name)) return true;
+      if (formatSourceInlineSelection(view, name)) return true;
       let { from, to } = view.state.selection.main;
       const line = view.state.doc.lineAt(from);
       if (lineCommands.includes(name)) {
@@ -732,13 +788,27 @@ export function Editor({
     const toolbar = instance.vditor.toolbar.elements;
     instance.focus();
     if (name === 'link' && !ensureLinkCaret(instance.vditor.ir.element, liveCaret.current)) return false;
-    if (nativeCommands.includes(name)) {
+    if (formatLiveSelection(instance.vditor.ir.element, instance.vditor, name)) {
+      commitRich();
+      return true;
+    }
+    if (name === 'indent' || name === 'outdent') {
+      instance.vditor.ir.element.dispatchEvent(new KeyboardEvent('keydown', {
+        key: 'Tab', code: 'Tab', shiftKey: name === 'outdent', bubbles: true, cancelable: true,
+      }));
+    } else if (nativeCommands.includes(name)) {
       toolbar[name]?.firstElementChild?.click();
     } else if (name === 'heading' && Number(payload?.level ?? payload ?? 1) > 0) {
       const level = Math.max(1, Math.min(6, Math.floor(Number(payload?.level ?? payload ?? 1)) || 1));
       toolbar.headings?.querySelector(`[data-tag="h${level}"]`)?.click();
     } else if (name === 'heading') {
-      toolbar.headings?.firstElementChild?.click();
+      const anchor = window.getSelection()?.anchorNode;
+      const element = anchor?.nodeType === Node.ELEMENT_NODE ? anchor : anchor?.parentElement;
+      const heading = element?.closest('h1, h2, h3, h4, h5, h6');
+      if (!instance.vditor.ir.element.contains(heading)) return false;
+      const button = toolbar.headings?.firstElementChild;
+      button?.classList.add('vditor-menu--current');
+      button?.click();
     } else {
       const edit = formatMarkdown(name, payload, instance.getSelection() ?? '');
       if (!edit) return false;
@@ -834,8 +904,10 @@ export function Editor({
   useImperativeHandle(editorRef, () => ({
     command, find, replace, jump, contextCommand,
     focus: () => {
-      if (latest.current.mode === 'live') rich.current?.focus();
-      else if (latest.current.mode === 'read') previewHost.current?.focus();
+      if (latest.current.mode === 'live') {
+        if (rich.current) rich.current.focus();
+        else pendingLiveFocus.current = content.current.id;
+      } else if (latest.current.mode === 'read') previewHost.current?.focus();
       else source.current?.focus();
     },
     getSelection: () => {
@@ -847,6 +919,14 @@ export function Editor({
       const view = source.current;
       const range = view?.state.selection.main;
       return range ? view.state.sliceDoc(range.from, range.to) : '';
+    },
+    getLiveMarkdownSelection: () => {
+      const instance = rich.current;
+      const selection = window.getSelection();
+      if (latest.current.mode !== 'live' || !instance || !selection?.rangeCount || selection.isCollapsed) return '';
+      const range = selection.getRangeAt(0);
+      const editable = instance.vditor.ir.element;
+      return editable.contains(range.startContainer) && editable.contains(range.endContainer) ? liveSelectionMarkdown(instance, range) : '';
     },
     getValue: () => {
       commitRich();
@@ -960,7 +1040,7 @@ export function Editor({
       return true;
     }
     if (tableContextActions[id] && context.cell?.isConnected) return tableCommand(tableContextActions[id], context.cell);
-    if (['bold', 'italic', 'strike', 'inline-code', 'link', 'table', 'code', 'undo', 'redo'].includes(id)) return command(id, payload);
+    if (['bold', 'italic', 'strike', 'inline-code', 'underline', 'link', 'table', 'code', 'undo', 'redo'].includes(id)) return command(id, payload);
     if (!Object.hasOwn(pasteActions, id)) return false;
     if (desktop.editClipboard) return desktop.editClipboard(pasteActions[id]);
     return navigator.clipboard.readText().then(text => {
@@ -976,11 +1056,7 @@ export function Editor({
     const selection = context.view ? context.sourceSelection.main : context.range;
     const visible = context.view ? context.doc.sliceString(selection.from, selection.to) : selection.toString();
     let text = visible;
-    if (context.editable && !context.view && rich.current) {
-      const container = document.createElement('div');
-      container.append(selection.cloneContents());
-      text = rich.current.vditor.lute.VditorIRDOM2Md(container.innerHTML).trimEnd() || visible;
-    }
+    if (context.editable && !context.view && rich.current) text = liveSelectionMarkdown(rich.current, selection);
     await desktop.writeClipboard({ text });
     if (!cut || editorContext.current !== context || context.docId !== content.current.id || context.mode !== latest.current.mode ||
         content.current.raw !== raw || !restoreEditorContext(context)) return true;

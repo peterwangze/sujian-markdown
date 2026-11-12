@@ -1,7 +1,7 @@
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const { shell } = require('electron');
-const { pathKey, serialized } = require('./documents.cjs');
+const { documentExtension, pathKey, serialized } = require('./documents.cjs');
 
 function validateName(name) {
   if (typeof name !== 'string' || !name.trim() || name === '.' || name === '..' || /[<>:"/\\|?*\x00-\x1f]/.test(name)) {
@@ -67,6 +67,21 @@ function createFileOperations() {
       const directory = path.join(path.resolve(parent), validateName(name));
       await fs.mkdir(directory);
       return directory;
+    },
+    async createFile(parent, name) {
+      const base = validateName(typeof name === 'string' ? name.trim() : name);
+      const filename = documentExtension.test(base) ? base : `${base}.md`;
+      if (/^(?:con|prn|aux|nul|com[1-9¹²³]|lpt[1-9¹²³])(?:\.|$)/i.test(filename)) {
+        throw new Error('请输入有效的文件名称。');
+      }
+      const destination = path.join(path.resolve(parent), filename);
+      try {
+        await fs.writeFile(destination, '', { flag: 'wx' });
+      } catch (error) {
+        if (error.code === 'EEXIST' || error.code === 'EISDIR') throw new Error('此文件夹中已有同名文件或文件夹。');
+        throw error;
+      }
+      return destination;
     },
     async trashPath(filePath) {
       await shell.trashItem(path.resolve(filePath));

@@ -21,11 +21,23 @@ function linkDestination(value) {
 export function formatMarkdown(command, payload, selection, beforeLine = '') {
   const marker = inlineMarkers[command];
   if (marker) {
-    const script = command === 'superscript' || command === 'subscript';
-    const body = script ? selection.replace(/\\/g, '\\\\').replace(/[\t ^~]/g, '\\$&') : selection;
+    if (command === 'inline-code') {
+      let length = 1;
+      for (const [run] of selection.matchAll(/`+/g)) length = Math.max(length, run.length + 1);
+      const fence = '`'.repeat(length);
+      const padding = /^`|`$|^ .* $/s.test(selection) ? ' ' : '';
+      return { text: `${fence}${padding}${selection}${padding}${fence}`, offset: fence.length + padding.length, length: selection.length };
+    }
+    const trimEdges = command !== 'underline';
+    if (trimEdges && selection && !selection.trim()) return null;
+    const leading = trimEdges ? /^\s*/.exec(selection)[0] : '';
+    const trailing = trimEdges ? /\s*$/.exec(selection)[0] : '';
+    const content = selection.slice(leading.length, selection.length - trailing.length);
+    const scriptMarker = command === 'superscript' ? /[\\^]/g : command === 'subscript' ? /[\\~]/g : null;
+    const body = scriptMarker ? content.replace(scriptMarker, '\\$&') : content;
     const close = command === 'underline' ? '</u>' : marker;
-    const text = `${marker}${body}${close}`;
-    return { text, offset: marker.length, length: body.length };
+    const text = `${leading}${marker}${body}${close}${trailing}`;
+    return { text, offset: leading.length + marker.length, length: body.length };
   }
 
   const selected = selection || '';
@@ -62,7 +74,7 @@ export function formatMarkdown(command, payload, selection, beforeLine = '') {
       for (const [run] of selected.matchAll(/`+/g)) length = Math.max(length, run.length + 1);
       const fence = '`'.repeat(length);
       text = block(`${fence}${language}\n${selected}\n${fence}`, beforeLine);
-      break;
+      return { text, offset: (beforeLine.trim() ? 2 : 0) + fence.length + language.length + 1, length: selected.length };
     }
     case 'math':
       text = payload?.inline ? `$${selected || payload?.text || 'x'}$` : block(`$$\n${selected || payload?.text || 'E = mc^2'}\n$$`, beforeLine);

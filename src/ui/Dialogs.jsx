@@ -253,6 +253,28 @@ export function ExportDialog({ name, close, run }) {
   </Modal>
 }
 
+export function NewFileDialog({ folder, close, create }) {
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  return <Modal title="新建文件" onClose={() => { if (!busy) close() }}>
+    <form onSubmit={async event => {
+      event.preventDefault()
+      if (busy) return
+      const name = new FormData(event.currentTarget).get('name')
+      setBusy(true)
+      setError('')
+      try { await create(name) }
+      catch (failure) { setError(failure.message); setBusy(false) }
+    }}>
+      <p className="modal-detail">{folder}</p>
+      <label className="text-setting">文件名<input name="name" placeholder="例如 会议纪要.md" required autoFocus disabled={busy}/></label>
+      {error && <p className="form-error" role="alert">{error}</p>}
+      <footer><button type="button" onClick={close} disabled={busy}>取消</button>
+        <button type="submit" className="primary" disabled={busy}>{busy ? '正在创建…' : '创建'}</button></footer>
+    </form>
+  </Modal>
+}
+
 export function Recovery({ drafts, close, recover, discard, notify }) {
   return <Modal title="恢复草稿" onClose={close}>
     {drafts.length ? drafts.map(draft => <div className="recover-row" key={draft.id}>

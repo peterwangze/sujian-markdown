@@ -244,7 +244,7 @@ function buildMenu(hotkeys = {}) {
   template.push(
     { label: '文件', submenu: [
       action('新建文档', 'new-file', 'CmdOrCtrl+N'),
-      { label: '新建窗口', accelerator: 'CmdOrCtrl+Shift+N', click: () => void createWindow() },
+      { label: '新建窗口', accelerator: hotkeys['new-window'] ? undefined : 'CmdOrCtrl+Shift+N', click: () => void createWindow() },
       action('打开文件…', 'open-files', 'CmdOrCtrl+O'), action('打开文件夹…', 'open-folder', 'CmdOrCtrl+Shift+O'),
       action('快速打开…', 'quick-open', 'CmdOrCtrl+P'), divider,
       action('保存', 'save', 'CmdOrCtrl+S'), action('另存为…', 'save-as', 'CmdOrCtrl+Shift+S'),
@@ -263,7 +263,7 @@ function buildMenu(hotkeys = {}) {
       action('实时编辑', 'view-live'), action('源码编辑', 'view-source', 'CmdOrCtrl+/'), action('阅读', 'view-read'), divider,
       action('显示或隐藏侧边栏', 'toggle-sidebar', 'CmdOrCtrl+Shift+L'),
       action('专注模式', 'toggle-focus', 'F8'), action('打字机模式', 'toggle-typewriter', 'F9'), divider,
-      { role: 'resetZoom' }, { role: 'zoomIn' }, { role: 'zoomOut' }, { role: 'togglefullscreen' },
+      action('恢复实际大小', 'reset-zoom'), { role: 'zoomIn' }, { role: 'zoomOut' }, { role: 'togglefullscreen' },
     ] },
   );
   if (isMac) template.push({ role: 'windowMenu' });
@@ -366,6 +366,7 @@ function installIpc({ assets, conversion, fonts, storage, operations }) {
   handle('duplicate-path', (_state, ...args) => operations.duplicatePath(...args));
   handle('trash-path', (_state, ...args) => operations.trashPath(...args));
   handle('create-directory', (_state, ...args) => operations.createDirectory(...args));
+  handle('create-file', (_state, parent, name) => operations.createFile(parent, name));
   handle('undo-file-operation', () => operations.undoFileOperation());
   handle('set-watched-files', (state, paths) => state.watcher.setPaths(paths));
   handle('load-drafts', () => storage.loadDrafts());
@@ -422,6 +423,7 @@ function installIpc({ assets, conversion, fonts, storage, operations }) {
   });
   handle('set-spellcheck', ({ window }, enabled) => window.webContents.session.setSpellCheckerEnabled(enabled === true));
   handle('set-hotkeys', (_state, hotkeys) => setHotkeys(hotkeys));
+  handle('reset-zoom', ({ window }) => window.webContents.setZoomLevel(0));
   handle('set-menu-shortcuts-ignored', ({ window }, enabled) => {
     window.webContents.setIgnoreMenuShortcuts(Boolean(enabled));
   });

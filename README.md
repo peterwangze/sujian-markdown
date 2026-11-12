@@ -6,7 +6,7 @@
 
 <p align="center"><strong>写作时看见排版，改稿时看清变化。</strong></p>
 <p align="center">给长文、技术文档和改稿用的本地 Markdown 编辑器。边写边看排版，用键盘找到文件和命令，再把确认过的改动交付出去。</p>
-<p align="center"><a href="https://github.com/peterwangze/sujian-markdown/releases/tag/v1.4.2"><strong>下载 v1.4.2 离线安装包</strong></a> · Windows / macOS / Linux</p>
+<p align="center"><a href="https://github.com/peterwangze/sujian-markdown/releases/tag/v1.4.3"><strong>下载 v1.4.3 离线安装包</strong></a> · Windows / macOS / Linux</p>
 
 ## 用顺手的方式写作
 
@@ -14,9 +14,11 @@
 
 - **给不同的写作环境换一套配色。** 在 **设置 → 外观** 直接预览暖白、亮白、羊皮纸、雾蓝、深墨、松影和高对比。配色同时应用到编辑、阅读和审阅界面，也可跟随系统切换或导入 CSS。
 - **长文和代码用各自合适的字。** 在 **设置 → 字体** 分别选正文与标题、源码与代码、菜单与界面的字体。调整字号、行距时可就地看样张。内置 Inter、Source Serif 4、JetBrains Mono、Noto Sans SC 和 Noto Serif SC，断网也能用，均随应用附带 SIL Open Font License。在同一页可导入 TTF、OTF、WOFF 或 WOFF2，字体保存在本机的素笺字体库，供本机编辑与阅读使用。
-- **从键盘直达文件、命令和行号。** `Ctrl/⌘+P` 按文件名或路径打开，`Ctrl/⌘+Shift+P` 搜索命令，`Ctrl/⌘+G` 跳到源码指定行。`Ctrl+Tab` 与 `Ctrl+Shift+Tab` 切换标签，`F3` 与 `Shift+F3` 在查找栏打开时浏览匹配。可以在 **设置 → 快捷键** 搜索命令、直接按键录入、查看冲突和恢复默认。
+- **手留在键盘上，写完一段再切文档。** 在即时、源码或分栏编辑区按 `Ctrl/⌘+1` 到 `6` 设置标题，按 `Ctrl/⌘+0` 转回正文。用 `Ctrl/⌘+B` 加粗、`Ctrl/⌘+K` 插入链接、`Ctrl/⌘+P` 按文件名定位，或用 `Ctrl+Tab` 切到下一份文档。在 **设置 → 快捷键** 搜索命令，按下自己的组合键即可录入。遇到冲突会显示占用的命令，每个命令都可恢复默认。[分场景快捷键清单](docs/shortcut-acceptance.md)
 - **少一次伸手拿鼠标。** 文件侧栏可用方向键在条目间移动、展开和折叠目录。工具菜单支持方向键选择和 `Esc` 返回。在标签栏用 `Delete` 关闭文件后，可以接着用方向键操作剩余标签。
-- **写到列表项中间也能调整层级。** 用 `Tab` 和 `Shift+Tab` 缩进或提升普通列表、编号和任务项。可一次移动同级选中的多项，也可调整选中的多行代码。表格仍可前后移格，末格按 `Tab` 接着填新行。先按 `Esc` 再按 `Tab` 或 `Shift+Tab` 可移出编辑区。[编辑按键行为](docs/usability.md#正文编辑按键)
+- **写清单时直接输入列表标记。** 在即时编辑的段首键入 `*`、`-` 或 `+`，按空格即可开始无序列表。用 `Tab` 缩进，用 `Shift+Tab` 提升嵌套项，可一次移动同级选中的多项。一级空项按 `Enter` 退出。表格可前后移格，末格按 `Tab` 接着填新行。先按 `Esc` 再按 `Tab` 或 `Shift+Tab` 可移出编辑区。[编辑按键行为](docs/usability.md#正文编辑按键)
+
+<img src="docs/images/sujian-shortcuts.png" alt="素笺快捷键设置正在录制一级标题的组合键，并指出它与二级标题冲突。" width="650">
 
 ## 在要操作的地方右击
 
@@ -26,8 +28,10 @@
 
 - **在光标处插入。** 右击普通正文可在点击位置插入链接、表格或代码块，也可粘贴、保存和审阅。
 - **选中文字后就地处理。** 右击选区可剪切、复制、加粗、斜体、加删除线或转为行内代码。粘贴会替换选区，右击选区外则把光标移到点击位置。
+- **在提纲、清单和表格里调整文字格式。** 即时编辑的加粗、斜体、删除线和行内代码会保留选区两侧的空白。源码与分栏中，跨几个段落、标题或列表项的选区也能按块格式化，保存后仍可在其他 Markdown 工具中渲染。
 - **在元素上找到对应操作。** 右击表格可增删行列，右击代码块可复制代码或更改语言，右击链接可打开或复制地址。
 - **在文件列表里直接审阅。** 右击侧栏文件、最近文档或标签页，选择 **审阅修订稿**。目标文档可以在后台打开，你仍可留在正在写的标签页。用键盘聚焦目标后，也可按 `Shift+F10` 打开菜单。
+- **在项目目录里直接建笔记。** 右击工作区根目录、子文件夹或固定文件夹，选择 **新建文件**。只输入名称时会补上 `.md`，新文档会在标签页打开，可直接开始写。
 - **在代码旁选择语言或图表类型。** 在即时编辑中点击代码块右下角的标签，用语言名或 `py`、`ts`、`proto` 等别名搜索。已有的 Pandoc 围栏代码和 Quarto 代码单元也能高亮，切换语言时保留原有属性和选项。点击代码块中的复制按钮可提取代码。Flowchart.js 支持 `flowchart` 和 `flow`，Graphviz 支持 `graphviz` 和 `dot`，正文以 `flowchart LR` 或 `graph TD` 开头时选择 `mermaid`。
 
 ![在素笺代码块右下角打开语言选择器，输入 ja 后列出 JavaScript 和 Java。](docs/images/sujian-code-language.png)
@@ -60,6 +64,7 @@ AI 生成由你选择的外部工具完成。素笺在本机进行审阅、比�
 - **需要时再校对正文。** 正文拼写检查默认关闭。可在 **设置 → 编辑 → 正文拼写检查** 开启，右击错词可查看替换建议。即时、源码和分栏编辑均会跳过代码、公式、链接地址和常见技术标识符。
 - **把多份文档放在手边。** 用标签页切换文件，从大纲跳到章节，在工作区里跨文件搜索。长文档自动进入源码模式，便于滚动和查找。
 - **保住正在写的内容。** 重启后可以从侧栏恢复未保存的草稿。磁盘文件有外部改动时，可以对照磁盘版本，并把正在编辑的内容另存成副本。
+- **让笔记和插图一起移动。** 导入或粘贴本地图片时，素笺默认将图片复制到已保存文档旁的 `文档名.assets`，在 Markdown 中写入相对路径。新建和保存纯文字笔记只写入文档文件。
 - **断网也能导出成品。** 本地公式、Mermaid、Flowchart.js 和 Graphviz 图表可离线渲染。包含 GitHub 行内公式和引用、清单内图表的文档可导出为 PDF、HTML、Word 或 EPUB。安装包内置 Pandoc，也支持 PNG 长图和 Reveal.js 幻灯片等格式。
 
 ![素笺深墨主题下的分栏预览。左边是大纲和 Markdown 源码，右边渲染了公式与 Mermaid 流程图。](docs/images/sujian-split.png)
@@ -79,15 +84,15 @@ Windows 使用安装目录中的 `Sujian.exe`。macOS 使用 `/Applications/Suji
 
 | 系统 | x64 / Intel | ARM64 / Apple 芯片 |
 | --- | --- | --- |
-| Windows | [EXE](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.2/Sujian-1.4.2-win-x64.exe) | [EXE](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.2/Sujian-1.4.2-win-arm64.exe) |
-| macOS 13+ | [DMG](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.2/Sujian-1.4.2-mac-x64.dmg) | [DMG](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.2/Sujian-1.4.2-mac-arm64.dmg) |
-| Linux | [AppImage](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.2/Sujian-1.4.2-linux-x86_64.AppImage) · [DEB](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.2/Sujian-1.4.2-linux-amd64.deb) | [AppImage](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.2/Sujian-1.4.2-linux-arm64.AppImage) · [DEB](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.2/Sujian-1.4.2-linux-arm64.deb) |
+| Windows | [EXE](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.3/Sujian-1.4.3-win-x64.exe) | [EXE](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.3/Sujian-1.4.3-win-arm64.exe) |
+| macOS 13+ | [DMG](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.3/Sujian-1.4.3-mac-x64.dmg) | [DMG](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.3/Sujian-1.4.3-mac-arm64.dmg) |
+| Linux | [AppImage](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.3/Sujian-1.4.3-linux-x86_64.AppImage) · [DEB](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.3/Sujian-1.4.3-linux-amd64.deb) | [AppImage](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.3/Sujian-1.4.3-linux-arm64.AppImage) · [DEB](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.3/Sujian-1.4.3-linux-arm64.deb) |
 
 - **Windows** 双击 EXE 安装。安装包未做 Authenticode 签名。ARM64 版的 Pandoc 使用 Windows 11 的 x64 仿真。
 - **macOS** 挂载 DMG 后，将素笺拖到“应用程序”。此版本采用临时签名，首次启动时可能需要在“隐私与安全性”中允许打开。[Apple 打开应用说明](https://support.apple.com/en-us/102445)
 - **Linux** 赋予 AppImage 执行权限后打开，或通过软件包管理器安装 DEB。运行依赖发行版提供的 Chromium 系统库。
 
-安装包包含应用运行时、渲染资源、字体与 Pandoc。六种系统与架构组合均通过成品启动检查。[SHA-256 清单](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.2/SHA256SUMS.txt) · [构建与验证记录](https://github.com/peterwangze/sujian-markdown/actions/workflows/release.yml)
+安装包包含应用运行时、渲染资源、字体与 Pandoc。六种系统与架构组合均通过成品启动检查。[SHA-256 清单](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.3/SHA256SUMS.txt) · [构建与验证记录](https://github.com/peterwangze/sujian-markdown/actions/workflows/release.yml)
 
 ## 开发与兼容范围
 
@@ -101,7 +106,7 @@ npm start
 
 想先试用自己的文档里常见的语法，可以在素笺中打开仓库附带的验收样例，切换即时编辑、分栏和阅读模式，或导出为 Word、PDF 核对效果。测试相对图片时保留仓库目录结构。[Markdown 格式验收样例](docs/markdown-format-qa.md) · [实测结果与兼容范围](docs/markdown-format-results.md)
 
-运行 `npm test` 执行自动化回归。使用 `npm run package -- win32 x64` 构建 Windows x64 离线安装包，也可指定 `darwin` 或 `linux` 和对应架构。
+运行 `npm test` 执行自动化回归。构建后可运行 `npm run test:desktop-interactions`，用桌面客户端核对编辑、文件、偏好设置、审阅和导出的实际操作。使用 `npm run package -- win32 x64` 构建 Windows x64 离线安装包，也可指定 `darwin` 或 `linux` 和对应架构。[发布验收清单](docs/desktop-interaction-acceptance.md)
 
 用户可见的特性与 README 在同一次变更中更新。[开发规范](AGENTS.md)
 

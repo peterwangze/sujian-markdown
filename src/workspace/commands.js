@@ -7,13 +7,51 @@ const groups = {
   settings: '设置',
 }
 
+export const headingCommands = Array.from({ length: 6 }, (_, index) => {
+  const headingLevel = index + 1
+  return {
+    id: `heading-${headingLevel}`, label: `${headingLevel} 级标题`, group: 'writing',
+    keys: `Mod+${headingLevel}`, requires: ['writing'], editorCommand: 'heading', editorPayload: headingLevel,
+    keywords: `heading h${headingLevel} 标题级别`,
+  }
+})
+headingCommands.unshift({
+  id: 'paragraph', label: '正文段落', group: 'writing', keys: 'Mod+0', requires: ['writing'],
+  editorCommand: 'heading', editorPayload: 0, keywords: 'paragraph 清除标题级别',
+})
+
+const formattingCommands = [
+  { id: 'bold', label: '加粗', keys: 'Mod+B', keywords: 'strong' },
+  { id: 'italic', label: '斜体', keys: 'Mod+I', keywords: 'emphasis' },
+  { id: 'underline', label: '下划线', keys: 'Mod+U' },
+  { id: 'strike', label: '删除线', keys: 'Alt+Shift+5', macKeys: 'Ctrl+Shift+`', keywords: 'strikethrough' },
+  { id: 'inline-code', label: '行内代码', keys: 'Mod+Shift+`' },
+  { id: 'link', label: '插入链接', keys: 'Mod+K', keywords: 'hyperlink' },
+  { id: 'table', label: '插入表格', keys: 'Mod+T', macKeys: 'Cmd+Alt+T' },
+  { id: 'code', label: '代码块', keys: 'Mod+Shift+K', macKeys: 'Cmd+Alt+C', keywords: 'code fence' },
+  { id: 'math', label: '公式', keys: 'Mod+Shift+M', macKeys: 'Cmd+Alt+B' },
+  { id: 'quote', label: '引用', keys: 'Mod+Shift+Q', macKeys: 'Cmd+Alt+Q', keywords: 'blockquote' },
+  { id: 'ordered-list', label: '有序列表', keys: 'Mod+Shift+[', macKeys: 'Cmd+Alt+O' },
+  { id: 'list', label: '无序列表', keys: 'Mod+Shift+]', macKeys: 'Cmd+Alt+U', keywords: 'unordered bullet list' },
+  { id: 'check', label: '任务列表', keywords: 'task checklist' },
+  { id: 'indent', label: '增加缩进', keys: 'Mod+[' },
+  { id: 'outdent', label: '减少缩进', keys: 'Mod+]' },
+  { id: 'line', label: '分隔线', keywords: 'horizontal rule' },
+  { id: 'highlight', label: '高亮' },
+  { id: 'superscript', label: '上标' },
+  { id: 'subscript', label: '下标' },
+  { id: 'mermaid', label: 'Mermaid 图表' },
+  { id: 'toc', label: '目录', keywords: 'table of contents' },
+  { id: 'footnote', label: '脚注' },
+].map(command => ({ ...command, group: 'writing', requires: ['writing'], editorCommand: command.id }))
+
 export const commands = [
   { id: 'command-palette', label: '命令面板', group: 'navigate', keys: 'Mod+Shift+P', keywords: 'palette commands mingling' },
   { id: 'quick-open', label: '快速打开', group: 'navigate', keys: 'Mod+P', nativeKey: true, keywords: '文件 go to file quick open kuaisudakai' },
   { id: 'new-file', label: '新建文档', group: 'files', keys: 'Mod+N', nativeKey: true, keywords: 'new 新文件' },
   { id: 'open-files', label: '打开文档', group: 'files', keys: 'Mod+O', nativeKey: true, keywords: 'open file 打开文件' },
   { id: 'open-folder', label: '打开文件夹', group: 'files', keys: 'Mod+Shift+O', nativeKey: true, requires: ['native'], keywords: 'workspace folder 工作区' },
-  { id: 'new-window', label: '新建窗口', group: 'files', keys: 'Mod+Shift+N', nativeKey: true, fixed: true, requires: ['native'], keywords: 'new window' },
+  { id: 'new-window', label: '新建窗口', group: 'files', keys: 'Mod+Shift+N', nativeKey: true, requires: ['native'], keywords: 'new window' },
   { id: 'save', label: '保存', group: 'files', keys: 'Mod+S', nativeKey: true, requires: ['document'], keywords: 'save baocun' },
   { id: 'save-as', label: '另存为', group: 'files', keys: 'Mod+Shift+S', nativeKey: true, requires: ['document'], keywords: 'save as' },
   { id: 'close-tab', label: '关闭标签', group: 'files', keys: 'Mod+W', nativeKey: true, requires: ['document'], keywords: 'close tab' },
@@ -23,6 +61,8 @@ export const commands = [
   { id: 'go-to-line', label: '跳转到行', group: 'navigate', keys: 'Mod+G', requires: ['document'], keywords: 'go to line goto 定位 行号' },
   { id: 'find', label: '查找', group: 'writing', keys: 'Mod+F', nativeKey: true, requires: ['document'], keywords: 'find search 搜索文字' },
   { id: 'replace', label: '替换', group: 'writing', keys: 'Mod+H', macKeys: 'Cmd+Alt+F', nativeKey: true, requires: ['writing'], keywords: 'replace 替代' },
+  ...headingCommands,
+  ...formattingCommands,
   { id: 'search-folder', label: '搜索工作区', group: 'navigate', keys: 'Mod+Shift+F', nativeKey: true, requires: ['workspace'], keywords: 'find in files 文件夹 全局搜索' },
   { id: 'view-live', label: '即时编辑', group: 'view', requires: ['document'], keywords: 'live preview 所见即所得 WYSIWYG' },
   { id: 'view-source', label: '切换源码', group: 'view', keys: 'Mod+/', nativeKey: true, requires: ['document'], keywords: 'source markdown 原文 yuanma' },
@@ -32,6 +72,7 @@ export const commands = [
   { id: 'toggle-focus', label: '专注模式', group: 'view', keys: 'F8', nativeKey: true, requires: ['document'], keywords: 'focus mode' },
   { id: 'toggle-typewriter', label: '打字机模式', group: 'view', keys: 'F9', nativeKey: true, requires: ['document'], keywords: 'typewriter mode' },
   { id: 'fullscreen', label: '全屏', group: 'view', keywords: 'fullscreen' },
+  { id: 'reset-zoom', label: '恢复实际大小', group: 'view', keys: 'Mod+Shift+0', requires: ['native'], keywords: 'reset zoom actual size 缩放' },
   { id: 'toggle-dark', label: '切换深色模式', group: 'view', keywords: 'dark light 黑暗 theme 主题' },
   { id: 'pin-folder', label: '固定当前文件夹', group: 'files', requires: ['workspace'], keywords: 'pin folder 收藏' },
   { id: 'review', label: '审阅修订稿', group: 'review', requires: ['document'], keywords: 'review AI 修订 候选稿 diff shenyue' },
@@ -42,11 +83,11 @@ export const commands = [
   { id: 'import', label: '导入文档', group: 'files', requires: ['native'], keywords: 'import pandoc' },
   { id: 'export', label: '导出文档', group: 'review', keys: 'Mod+Shift+E', nativeKey: true, requires: ['document'], keywords: 'export PDF HTML Word 打包' },
   { id: 'print', label: '打印', group: 'review', requires: ['document', 'native'], keywords: 'print PDF' },
-  { id: 'copy-markdown', label: '复制 Markdown', group: 'writing', requires: ['document'], keywords: 'copy source 复制源码' },
+  { id: 'copy-markdown', label: '复制 Markdown', group: 'writing', keys: 'Mod+Shift+C', requires: ['document'], editorOnly: true, keywords: 'copy source 复制源码' },
   { id: 'copy-rich', label: '复制富文本', group: 'writing', requires: ['document'], keywords: 'copy rich text' },
   { id: 'copy-html', label: '复制 HTML 源码', group: 'writing', requires: ['document'], keywords: 'copy HTML' },
   { id: 'copy-plain', label: '复制纯文本', group: 'writing', requires: ['document'], keywords: 'copy plain text' },
-  { id: 'image', label: '插入本地图片', group: 'writing', requires: ['writing'], keywords: 'image 图像' },
+  { id: 'image', label: '插入本地图片', group: 'writing', keys: 'Mod+Shift+I', macKeys: 'Cmd+Ctrl+I', requires: ['writing'], editorOnly: true, keywords: 'image 图像' },
   { id: 'upload-images', label: '上传本地图片', group: 'writing', requires: ['writing', 'native'], keywords: 'upload images' },
   { id: 'settings', label: '设置', group: 'settings', keys: 'Mod+,', nativeKey: true, keywords: 'preferences settings 字体 主题 外观 shezhi' },
   { id: 'shortcuts', label: '设置快捷键', group: 'settings', keywords: 'hotkey shortcut keyboard 按键 快捷操作' },
@@ -116,7 +157,15 @@ export function defaultShortcut(command, platform) {
 }
 
 export function effectiveShortcut(command, hotkeys, platform) {
-  return (!command.fixed && normalizeShortcut(hotkeys?.[command.id])) || defaultShortcut(command, platform)
+  const custom = !command.fixed && normalizeShortcut(hotkeys?.[command.id])
+  return custom || (shortcutDefaultOverride(command, hotkeys, platform) ? '' : defaultShortcut(command, platform))
+}
+
+export function shortcutDefaultOverride(command, hotkeys, platform) {
+  const key = physicalShortcut(defaultShortcut(command, platform), platform)
+  if (!key || command.fixed || normalizeShortcut(hotkeys?.[command.id])) return null
+  return configurableCommands.find(other => other.id !== command.id &&
+    physicalShortcut(hotkeys?.[other.id], platform) === key) ?? null
 }
 
 function physicalShortcut(value, platform) {
@@ -146,7 +195,10 @@ export function isComposingKey(event) {
 
 export function shortcutFromEvent(event, platform) {
   if (isComposingKey(event) || event.getModifierState?.('AltGraph')) return null
-  const raw = event.shiftKey ? (shiftedKeys.get(event.key) ?? event.key) : event.key
+  let raw = event.shiftKey ? (shiftedKeys.get(event.key) ?? event.key) : event.key
+  if (platform === 'darwin' && event.altKey && (event.metaKey || event.ctrlKey) && !/^[\x20-\x7e]$/.test(raw ?? '')) {
+    raw = /^Key([A-Z])$/.exec(event.code)?.[1] ?? raw
+  }
   const key = normalizeKey(raw ?? '')
   if (!key) return null
   const modifiers = []
@@ -157,8 +209,8 @@ export function shortcutFromEvent(event, platform) {
   return normalizeShortcut([...modifiers, key].join('+'))
 }
 
-export function findShortcut(event, { hotkeys, platform, native, modalOpen }) {
-  if (event.defaultPrevented || event.repeat || modalOpen) return null
+export function findShortcut(event, { hotkeys, platform, native, modalOpen, allowRepeat = false }) {
+  if (event.defaultPrevented || (event.repeat && !allowRepeat) || modalOpen) return null
   const pressed = physicalShortcut(shortcutFromEvent(event, platform), platform)
   if (!pressed) return null
   const custom = configurableCommands.find(command => physicalShortcut(hotkeys?.[command.id], platform) === pressed)
@@ -169,8 +221,15 @@ export function findShortcut(event, { hotkeys, platform, native, modalOpen }) {
   return fallback?.id ?? null
 }
 
+export function isReassignedEditorShortcut(event, { hotkeys, platform }) {
+  const pressed = physicalShortcut(shortcutFromEvent(event, platform), platform)
+  return Boolean(pressed) && configurableCommands.some(command =>
+    (command.editorCommand || command.editorOnly || command.id === 'view-source') && normalizeShortcut(hotkeys?.[command.id]) &&
+    physicalShortcut(defaultShortcut(command, platform), platform) === pressed)
+}
+
 const reserved = {
-  common: ['Mod+A', 'Mod+C', 'Mod+V', 'Mod+X', 'Mod+Z', 'Mod+Shift+Z', 'Mod+Shift+V', 'Mod+Q', 'Mod+0', 'Mod+-', 'Mod+='],
+  common: ['Mod+A', 'Mod+C', 'Mod+V', 'Mod+X', 'Mod+Z', 'Mod+Shift+Z', 'Mod+Shift+V', 'Mod+Q', 'Mod+-', 'Mod+=', 'Mod+Plus', 'Mod+Shift+='],
   darwin: ['Cmd+H', 'Cmd+Alt+H', 'Cmd+M', 'Cmd+Alt+M', 'Cmd+Ctrl+F'],
   other: ['Ctrl+Y', 'F11'],
 }
@@ -179,6 +238,7 @@ export function shortcutConflict(id, value, hotkeys, platform) {
   const shortcut = physicalShortcut(value, platform)
   if (!shortcut) return null
   if (shortcut === 'F3' || shortcut === 'Shift+F3') return '查找匹配项'
+  if (shortcut === 'Shift+F10') return '上下文菜单'
   if (shortcut === physicalShortcut('Mod+Enter', platform)) return '在表格中添加行'
   if ([...reserved.common, ...(platform === 'darwin' ? reserved.darwin : reserved.other)]
     .some(item => physicalShortcut(item, platform) === shortcut)) return '系统或文本编辑快捷键'

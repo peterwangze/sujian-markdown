@@ -1,6 +1,6 @@
 {
   "name": "sujian-markdown",
-  "version": "1.4.2",
+  "version": "1.4.3",
   "private": true,
   "description": "素笺 Sujian, a local-first desktop Markdown editor",
   "author": {
@@ -17,7 +17,8 @@
     "start": "electron .",
     "package": "npm run build && node scripts/release-package.mjs",
     "test": "node --test",
-    "test:desktop": "node scripts/smoke-desktop.mjs"
+    "test:desktop": "node scripts/smoke-desktop.mjs",
+    "test:desktop-interactions": "node scripts/check-desktop-interactions.mjs"
   },
   "dependencies": {
     "@codemirror/commands": "^6.10.0",

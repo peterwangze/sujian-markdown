@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { ChevronDown, ChevronRight, FileText, Folder, FolderOpen, List, FolderSearch, RotateCcw, Pin, FolderPlus, MoreHorizontal, ArrowUpDown } from 'lucide-react'
 import { desktop, native } from '../workspace/desktop.js'
 import { isComposingKey } from '../workspace/commands.js'
@@ -35,10 +35,11 @@ function navigateRows(event) {
   next?.focus()
 }
 
-function FileTree({ path, level, expanded, settings, refresh, active, onOpen, onContext, notify }) {
+function FileTree({ path, level, expanded, settings, refresh, folderToExpand, active, onOpen, onContext, notify }) {
   const [nodes, setNodes] = useState(null)
   const [error, setError] = useState('')
   const [children, setChildren] = useState({})
+  const expandedRequest = useRef(null)
   useEffect(() => {
     let current = true
     setError('')
@@ -52,6 +53,14 @@ function FileTree({ path, level, expanded, settings, refresh, active, onOpen, on
     }).catch(failure => { if (current) setError(failure.message) })
     return () => { current = false }
   }, [path, level, refresh, settings.fileList, settings.showHidden])
+  useEffect(() => {
+    const target = folderToExpand?.path
+    if (target && expandedRequest.current !== folderToExpand &&
+      nodes?.some(item => item.kind === 'directory' && item.path === target)) {
+      expandedRequest.current = folderToExpand
+      setChildren(previous => previous[target] ? previous : { ...previous, [target]: true })
+    }
+  }, [folderToExpand, nodes])
 
   if (!expanded) return null
   if (error) return <div className="sidebar-note">{error}</div>
@@ -74,17 +83,18 @@ function FileTree({ path, level, expanded, settings, refresh, active, onOpen, on
         {directory ? <Folder size={16}/> : <FileText size={15}/>}<span>{item.name}</span>
       </button>
       {directory && open && <FileTree path={item.path} level={level + 1} expanded={open} settings={settings}
-        refresh={refresh} active={active} onOpen={onOpen} onContext={onContext} notify={notify}/>}
+        refresh={refresh} folderToExpand={folderToExpand} active={active} onOpen={onOpen} onContext={onContext} notify={notify}/>}
     </div>
   })
 }
 
-export function Sidebar({ workspace, sidebar, setSidebar, outline, jump, openFolder, searchFolder, refresh, notify,
+export function Sidebar({ workspace, sidebar, setSidebar, outline, jump, openFolder, searchFolder, refresh, folderToExpand, notify,
   onContext, onOpenPath, onSelectDocument, openRecovery }) {
   const { active, docs, settings, configure, recoverable } = workspace
   const [rootOpen, setRootOpen] = useState(true)
   const [collapsed, setCollapsed] = useState(new Set())
   useEffect(() => { setRootOpen(true) }, [settings.workspace])
+  useEffect(() => { if (folderToExpand?.path === settings.workspace) setRootOpen(true) }, [folderToExpand, settings.workspace])
   useEffect(() => { setCollapsed(new Set()) }, [active?.id])
   const visibleOutline = useMemo(() => {
     const visible = []
@@ -131,7 +141,7 @@ export function Sidebar({ workspace, sidebar, setSidebar, outline, jump, openFol
           </>}
         </div>
         {settings.workspace ? <FileTree path={settings.workspace} level={0} expanded={rootOpen} settings={settings}
-          refresh={refresh} active={active} onOpen={onOpenPath} onContext={onContext} notify={notify}/> :
+          refresh={refresh} folderToExpand={folderToExpand} active={active} onOpen={onOpenPath} onContext={onContext} notify={notify}/> :
           rootOpen && docs.map(doc => <button key={doc.id} className={'tree-row ' + (doc.id === active?.id ? 'selected' : '')}
             data-sidebar-row data-level="1" aria-current={doc.id === active?.id ? 'true' : undefined}
             style={{ '--indent': 1 }} onClick={() => onSelectDocument(doc.id)} title={doc.path || doc.name}
