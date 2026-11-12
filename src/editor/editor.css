@@ -63,7 +63,6 @@
   box-shadow: none;
 }
 .editor-focus-mode .vditor-ir > .vditor-reset:has([data-sujian-active]) > [data-block="0"]:not([data-sujian-active]) { opacity: .45; }
-::highlight(sujian-underline) { text-decoration: underline; }
 .editor-table-toolbar {
   position: absolute;
   z-index: 5;

@@ -118,14 +118,45 @@ CM paragraph separation target
 
 ## CM-HTML
 
-运维手册用键帽和折叠详情压缩辅助信息。CommonMark 识别原始 HTML，具体应用按自身 HTML 处理策略呈现。允许以下静态标签时，应可点击折叠标题并看到详情，HTML 注释不应成为可见正文。 [CommonMark HTML 块](https://spec.commonmark.org/0.31.2/#html-blocks) · [GFM 禁止的原始 HTML](https://github.github.com/gfm/#disallowed-raw-html-extension-) · [Typora HTML](https://support.typora.io/Markdown-Reference/#html)
+运维手册用键帽和折叠详情压缩辅助信息。CommonMark 识别原始 HTML，具体应用按自身 HTML 处理策略呈现。允许以下静态标签时，应可点击折叠标题并看到详情，HTML 注释在预览和导出中保持隐藏。 [CommonMark HTML 块](https://spec.commonmark.org/0.31.2/#html-blocks) · [GFM 禁止的原始 HTML](https://github.github.com/gfm/#disallowed-raw-html-extension-) · [Typora HTML](https://support.typora.io/HTML/) · [GitHub 折叠区](https://docs.github.com/en/get-started/writing-on-github/working-with-advanced-formatting/organizing-information-with-collapsed-sections)
 
 按 <kbd>Ctrl</kbd> + <kbd>S</kbd> 保存。<u>CM underline target</u>、H<sub>2</sub>O、m<sup>2</sup> 和 <mark>CM HTML highlight target</mark> 均由静态 HTML 元素定义。
+
+行内排版也可以组合使用。<strong>CM HTML bold target <em>CM HTML italic target</em></strong>、<del>CM HTML deleted target</del>、<code>CM HTML code target</code> 和 <ruby>漢<rt>かん</rt></ruby> 分别用于强调、删改、代码和注音。
+
+文字可以使用 <span style="color:#b22222; font-size:24px; background-color:#fff4cc">CM HTML safe style target</span> 这类内联样式。
+
+<div style="text-align:center">CM HTML centered target</div>
 
 <details>
 <summary>CM details summary target</summary>
 <p>CM details content target</p>
 </details>
+
+<details>
+
+<summary>CM mixed details summary target</summary>
+
+### CM Mixed Details Heading
+
+打开折叠区后可查看 **CM mixed details body target** 和下面的清单。
+
+- CM mixed details list target
+
+<details open>
+<summary>CM nested details summary target</summary>
+
+CM nested details body target
+
+</details>
+
+CM after nested details target
+
+<p>CM mixed details HTML tail target</p>
+</details>
+<p>CM after mixed details target</p>
+
+[跳到折叠区里的标题](#cm-mixed-details-heading)
 
 <!-- CM hidden comment target -->
 

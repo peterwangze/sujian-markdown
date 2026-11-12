@@ -5,6 +5,7 @@ import { resolveTheme, themeDeclarations } from '../theme/themes.js';
 import { unwrapGithubMath } from './github-math.js';
 import { normalizeFenceLanguagesForPreview } from './fence-info.js';
 import { captureExplicitHeadingIds, installMarkdownHeadingAnchors } from './markdown-anchors.js';
+import { sanitizeInlineStyles } from './safe-inline-css.js';
 
 export const vendorRoot = new URL(`${import.meta.env.BASE_URL}vendor/vditor/`, document.baseURI).href.replace(/\/$/, '');
 const assets = `${vendorRoot}/dist`;
@@ -73,7 +74,9 @@ function sanitizedFragment(html, styles = false) {
     FORBID_TAGS: styles === 'svg' ? sanitizeOptions.FORBID_TAGS.filter((tag) => tag !== 'style') : sanitizeOptions.FORBID_TAGS,
     RETURN_DOM_FRAGMENT: true,
   });
-  if (styles === 'svg') {
+  if (styles === 'inline') {
+    sanitizeInlineStyles(fragment);
+  } else if (styles === 'svg') {
     for (const style of fragment.querySelectorAll('style, [style]')) {
       const css = style.tagName.toLowerCase() === 'style' ? style.textContent : style.getAttribute('style');
       if (/@(?:import|font-face|namespace)\b|\\|url\(\s*["']?\s*[^#"'\s]|image-set\s*\(/i.test(css)) {
@@ -338,7 +341,7 @@ export async function renderPreview(markdown, {
   });
   const root = document.createElement('article');
   root.className = 'vditor-reset';
-  const fragment = sanitizedFragment(html);
+  const fragment = sanitizedFragment(html, embeddedMediaOnly ? false : 'inline');
   if (embeddedMediaOnly) {
     restrictReviewResources(fragment);
   } else if (!allowRemoteMedia) {

@@ -17,7 +17,7 @@
 
 在 Windows x64 启动 Electron，打开同一份样例，实际切换即时、分栏和阅读视图并导出。断网条件下检验本地图片和图表。样例打开后直接保存，文件字节一致。分栏和阅读核对了标题层级、列表嵌套、硬换行、表格与任务、警示块、脚注、目录和 HTML 折叠。
 
-PDF 共 14 页，提取文本核对了正文、表格、行内公式附近的文字、清单中的图表和文末标记。额外的 Word 回读样例覆盖了 YAML 标题内的公式、带属性的公式围栏，以及约 2 MB 文档的首尾内容和公式。
+v1.4.0 验收的 PDF 共 14 页，提取文本核对了正文、表格、行内公式附近的文字、清单中的图表和文末标记。额外的 Word 回读样例覆盖了 YAML 标题内的公式、带属性的公式围栏，以及约 2 MB 文档的首尾内容和公式。
 
 | 从真实文档发现的问题 | 修复与观察结果 |
 | --- | --- |
@@ -28,9 +28,14 @@ PDF 共 14 页，提取文本核对了正文、表格、行内公式附近的文
 | `dot` 图表显示为源码，同一文档含多个 Graphviz 时抛出渲染异常 | `dot` 和 `graphviz` 可在同一份文档中离线渲染。 |
 | 即时编辑的 `Shift+Enter` 换行会在继续输入时丢失，代码块复制按钮受内容安全策略拦截 | 在段落、引用和清单项中输入并保存，预览保持断行。复制按钮经过桌面桥接传出代码文本。 |
 
+## v1.4.1 HTML 复测
+
+在 Windows x64 用同一份样例核对了即时编辑、分栏、阅读及独立 HTML 文件。行内上下标、高亮、下划线、粗斜体、删除线、代码、键帽及 Ruby 注音均有运行结果。安全内联 CSS 保留了实际颜色、字号、纯色背景与对齐。HTML 输出继续拦截脚本、事件属性、iframe 和可加载外部资源的 CSS。审阅预览继续清理文档提供的样式。
+
+纯 HTML 和 HTML 与 Markdown 混排的折叠块都可展开与收起。样例包含分离的摘要行、嵌套折叠、默认展开的内层、折叠区里的标题和清单，以及紧贴关闭标签的内外 HTML 段落。即时编辑验证了鼠标、Enter、空格及章节链接，保存后源码字节一致。补充验证覆盖了在行内标签中输入中文、撤销和重做。[Typora HTML 支持](https://support.typora.io/HTML/) · [GitHub 折叠区](https://docs.github.com/en/get-started/writing-on-github/working-with-advanced-formatting/organizing-information-with-collapsed-sections)
+
 ## 当前兼容边界
 
-- `<details>` 可在分栏、阅读及 HTML 中展开。即时编辑沿用底层编辑器拆分 HTML 与 Markdown 的表示。
 - Obsidian 的 `[[双链]]`、块引用及跨笔记嵌入需要笔记库解析。Pandoc 定义列表、围栏 Div、文献引文，以及 Quarto 交叉引用和可执行单元需要对应发布工具。样例可在素笺打开、查看源码与保存。
 - 中文标点紧贴裸 URL 时，Lute 与 Pandoc 的 GFM 解析均可能把标点和后续文本当成网址一部分。使用带尖括号的自动链接或普通 Markdown 链接可明确边界。
 - KaTeX 支持范围与 MathJax 有差异。Windows x64 实测覆盖本文格式，macOS 与 Linux 的安装包启动另由发布流程验证。
@@ -42,6 +47,7 @@ npm ci
 npm run build
 node scripts/check-markdown-spec.mjs
 node scripts/check-markdown-desktop.mjs
+node scripts/check-html-desktop.mjs
 ```
 
 规范脚本默认读取两个上游公开样例，也可传入本地副本。桌面脚本用已下载到 `build/pandoc` 的当前平台 Pandoc，或 `SUJIAN_PANDOC` 指定的二进制文件回读导出产物。测试文件和导出保存在脚本输出的临时目录。

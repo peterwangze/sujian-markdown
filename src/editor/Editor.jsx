@@ -14,7 +14,9 @@ import { changeFenceLanguage, CodeLanguageControl, codeFenceAt, codeFenceLanguag
 import { contextSelection, domContext, linkAddress, restoreEditorContext, sourceContext, spellingAt } from './editor-context.js';
 import { completeFenceHeaders, replaceFenceLanguage, structuredFenceSources } from './fence-info.js';
 import { formatMarkdown } from './format.js';
-import { scrollToMarkdownAnchor } from './markdown-anchors.js';
+import { createLiveHtmlDetails } from './live-html-details.js';
+import { decorateLiveInlineHtml } from './live-html-inline.js';
+import { openEnclosingDetails, scrollToMarkdownAnchor } from './markdown-anchors.js';
 import { matchMarkdown, projectMarkdownEdit, replacementText } from './markdown-edits.js';
 import { handleRichCodeKeys } from './rich-code-keys.js';
 import { handleRichListKeys } from './rich-list-keys.js';
@@ -124,11 +126,13 @@ function visibleText(editor) {
   return { text, ranges };
 }
 
-function selectRich(editor, ranges, from, to) {
+function selectRich(editor, ranges, from, to, reveal) {
   const start = ranges.find((range) => range.from <= from && range.to > from);
   const end = ranges.find((range) => range.from < to && range.to >= to) ?? start;
   if (!start || !end) return false;
 
+  openEnclosingDetails(start.node.parentElement, reveal);
+  if (end !== start) openEnclosingDetails(end.node.parentElement, reveal);
   const selection = window.getSelection();
   const range = document.createRange();
   range.setStart(start.node, from - start.from);
@@ -199,30 +203,13 @@ function ensureLinkCaret(root, remembered) {
   return true;
 }
 
-function updateUnderlines(root) {
-  if (!CSS.highlights || typeof Highlight !== 'function') return;
-  const openings = [];
-  const ranges = [];
-  for (const marker of root.querySelectorAll('[data-type="html-inline"] > code')) {
-    const syntax = marker.textContent.trim();
-    if (/^<br\s*\/?\s*>$/i.test(syntax)) marker.parentElement.dataset.sujianBreak = '';
-    if (/^<u(?:\s[^>]*)?>$/i.test(syntax)) openings.push(marker.parentElement);
-    if (/^<\/u\s*>$/i.test(syntax) && openings.length) {
-      const range = document.createRange();
-      range.setStartAfter(openings.pop());
-      range.setEndBefore(marker.parentElement);
-      ranges.push(range);
-    }
-  }
-  CSS.highlights.set('sujian-underline', new Highlight(...ranges));
-}
-
 export function Editor({
   docId, value = '', mode = 'live', onChange, onSelection, onLink, onImage, resolveImage,
   assetUrl, focusMode = false, typewriter = false, spellcheck = false, wrap = true, allowRemoteMedia = true, theme = 'light', editorRef,
   onContextMenu,
 }) {
   const richHost = useRef(null);
+  const liveDetails = useRef(null);
   const sourceHost = useRef(null);
   const previewHost = useRef(null);
   const rich = useRef(null);
@@ -428,8 +415,14 @@ export function Editor({
     let alive = true;
     let instance;
     let observer;
+    let refreshHtml;
     const flush = (event) => {
-      if (!event.isComposing) queueMicrotask(commitRich);
+      if (event.isComposing) return;
+      queueMicrotask(() => {
+        if (!alive) return;
+        commitRich();
+        if (event.type === 'compositionend') refreshHtml?.();
+      });
     };
     let tabExitUntil = 0;
     const editKeys = (event) => {
@@ -546,9 +539,15 @@ export function Editor({
           editable.setAttribute('aria-description', '先按 Escape，再按 Tab 或 Shift+Tab 可移出编辑区。');
           editable.spellcheck = latest.current.spellcheck;
           setLiveTheme(instance, latest.current.theme);
+          liveDetails.current = createLiveHtmlDetails(editable);
+          refreshHtml = () => {
+            if (instance.vditor.ir.composingLock) return;
+            decorateLiveInlineHtml(editable);
+            liveDetails.current.refresh(content.current.id);
+          };
           const decorate = () => {
             resolveLiveAssets();
-            updateUnderlines(editable);
+            refreshHtml();
             renderLiveGithubMath(editable);
             for (const preview of normalizeLiveFencePreviews(editable, currentFenceSources())) {
               void highlightCode(preview, latest.current.theme, true).catch(() => {});
@@ -574,7 +573,8 @@ export function Editor({
       host.removeEventListener('keydown', editKeys, true);
       document.removeEventListener('selectionchange', selectionChange);
       observer?.disconnect();
-      CSS.highlights?.delete('sujian-underline');
+      liveDetails.current?.dispose();
+      liveDetails.current = null;
       if (rich.current) {
         rich.current.destroy();
         rich.current = null;
@@ -757,7 +757,7 @@ export function Editor({
     const matches = matchMarkdown(text, query, options);
     const match = nextMatch(matches, offset, options.backward);
     if (!match) return null;
-    selectRich(editable, ranges, match.index, match.index + match[0].length);
+    selectRich(editable, ranges, match.index, match.index + match[0].length, liveDetails.current?.reveal);
     lastFind.current = { key, index: match.index, length: match[0].length, ordinal: matches.indexOf(match) };
     return { index: matches.indexOf(match) + 1, count: matches.length };
   }
@@ -805,9 +805,13 @@ export function Editor({
     const { text, ranges } = visibleText(editable);
     const needle = heading?.replace(/[*_`~]/g, '') ?? line.trim().replace(/^(?:>|[-*+]\s)/, '').trim();
     const offset = needle && text.indexOf(needle);
-    if (needle && offset >= 0 && selectRich(editable, ranges, offset, offset)) return;
+    if (needle && offset >= 0 && selectRich(editable, ranges, offset, offset, liveDetails.current?.reveal)) return;
     const blocks = editable.querySelectorAll('[data-block="0"]');
-    blocks[Math.min(Math.max(0, lineNumber - 1), blocks.length - 1)]?.scrollIntoView({ block: 'center' });
+    const block = blocks[Math.min(Math.max(0, lineNumber - 1), blocks.length - 1)];
+    if (block) {
+      openEnclosingDetails(block, liveDetails.current?.reveal);
+      block.scrollIntoView({ block: 'center' });
+    }
   }
 
   useImperativeHandle(editorRef, () => ({
@@ -845,7 +849,7 @@ export function Editor({
   function openHref(href, pane) {
     if (href.startsWith('#')) {
       const contentRoot = pane?.classList.contains('editor-live') ? rich.current?.vditor.ir.element : previewHost.current;
-      scrollToMarkdownAnchor(contentRoot, href.slice(1));
+      scrollToMarkdownAnchor(contentRoot, href.slice(1), liveDetails.current?.reveal);
       return;
     }
     latest.current.onLink?.(href);

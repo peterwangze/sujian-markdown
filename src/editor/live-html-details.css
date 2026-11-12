@@ -1,0 +1,15 @@
+.editor-live [data-sujian-details-folded] { display: none !important; }
+
+.editor-live :is([data-sujian-details-empty-opener], [data-sujian-details-closing]:has(> .vditor-ir__preview:empty)):not(.vditor-ir__node--expand) {
+  margin-bottom: 0;
+}
+
+.editor-live :is([data-sujian-details-empty-opener] > .vditor-ir__preview, [data-sujian-details-closing] > .vditor-ir__preview:empty) {
+  min-height: 0;
+  margin-block: 0;
+  padding: 0;
+}
+
+.editor-live [data-sujian-details-empty-opener] > .vditor-ir__preview > details:empty { display: none; }
+.editor-live [data-sujian-details-summary] { display: list-item; list-style: disclosure-closed inside; }
+.editor-live [data-sujian-details-summary][aria-expanded="true"] { list-style-type: disclosure-open; }

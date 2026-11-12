@@ -1,0 +1,52 @@
+.editor-live :is([data-sujian-inline-html="b"], [data-sujian-inline-html="strong"]) {
+  font-weight: bold;
+}
+
+.editor-live :is([data-sujian-inline-html="cite"], [data-sujian-inline-html="em"], [data-sujian-inline-html="i"], [data-sujian-inline-html="var"]) {
+  font-style: italic;
+}
+
+.editor-live :is([data-sujian-inline-html="del"], [data-sujian-inline-html="s"], [data-sujian-inline-html="strike"]) {
+  text-decoration: line-through;
+}
+
+.editor-live :is([data-sujian-inline-html="ins"], [data-sujian-inline-html="u"]) {
+  text-decoration: underline;
+}
+
+.editor-live [data-sujian-inline-html="mark"] {
+  background: var(--selected);
+  color: var(--ink);
+}
+
+.editor-live :is([data-sujian-inline-html="sub"], [data-sujian-inline-html="sup"], [data-sujian-inline-html="small"]) {
+  font-size: .83em;
+}
+
+.editor-live [data-sujian-inline-html="sub"] { vertical-align: sub; }
+.editor-live [data-sujian-inline-html="sup"] { vertical-align: super; }
+
+.editor-live :is([data-sujian-inline-html="code"], [data-sujian-inline-html="kbd"], [data-sujian-inline-html="samp"]) {
+  font-family: var(--mono, monospace);
+  font-size: .85em;
+}
+
+.editor-live [data-sujian-inline-html="code"] {
+  background: var(--chrome);
+  border-radius: .25em;
+  padding: .15em .25em;
+}
+
+.editor-live [data-sujian-inline-html="kbd"] {
+  background: var(--selected);
+  color: var(--ink);
+  border: 1px solid var(--border);
+  border-radius: .25em;
+  padding: .1em .35em;
+}
+
+.editor-live [data-sujian-inline-html="q"]::before { content: open-quote; }
+.editor-live [data-sujian-inline-html="q"]::after { content: close-quote; }
+.editor-live [data-sujian-inline-html="ruby"] { display: ruby; }
+.editor-live [data-sujian-inline-html="rt"] { display: ruby-text; font-size: .5em; }
+.editor-live [data-sujian-inline-html="rp"] { display: none; }

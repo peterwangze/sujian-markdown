@@ -104,7 +104,14 @@ function liveHtmlAnchor(root, name) {
   }
 }
 
-export function scrollToMarkdownAnchor(root, fragment) {
+export function openEnclosingDetails(target, reveal) {
+  reveal?.(target);
+  for (let details = target.closest('details'); details; details = details.parentElement?.closest('details')) {
+    details.open = true;
+  }
+}
+
+export function scrollToMarkdownAnchor(root, fragment, reveal) {
   if (!root || !fragment) return false;
   let name = fragment;
   try { name = decodeURIComponent(fragment); } catch { /* malformed fragments can still match literally */ }
@@ -119,9 +126,7 @@ export function scrollToMarkdownAnchor(root, fragment) {
     headings.find(({ slug }) => slug === name)?.heading ?? destination;
   if (!target) return false;
 
-  for (let details = target.closest('details'); details; details = details.parentElement?.closest('details')) {
-    details.open = true;
-  }
+  openEnclosingDetails(target, reveal);
   const scrollTarget = target.hasAttribute(legacyAliasAttribute) ? target.parentElement : target;
   scrollTarget.scrollIntoView({ block: 'start' });
   return true;
