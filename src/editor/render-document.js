@@ -126,6 +126,24 @@ function graphvizWorker() {
 
 let diagramQueue = Promise.resolve();
 
+function drawFlowchart(host, source, colors) {
+  const diagram = window.flowchart.parse(source);
+  const measurement = host.ownerDocument.createElement('div');
+  measurement.style.cssText = 'position:fixed;top:0;left:0;visibility:hidden;pointer-events:none;';
+  measurement.inert = true;
+  measurement.append(host);
+  // Raphaël uses SVG getBBox to size the shapes around their labels.
+  host.ownerDocument.body.append(measurement);
+  try {
+    diagram.drawSVG(host, {
+      'font-color': colors.ink, 'line-color': colors.muted, 'element-color': colors.accent, fill: colors.surface,
+    });
+    return host.innerHTML;
+  } finally {
+    measurement.remove();
+  }
+}
+
 async function renderDiagrams(root, theme, embeddedMediaOnly = false) {
   const languages = ['mermaid', 'flowchart', 'flow', 'graphviz', 'sequence'];
   const diagrams = [...root.querySelectorAll(languages.map((language) => `div.language-${language}, pre > code.language-${language}`).join(', '))];
@@ -165,10 +183,7 @@ async function renderDiagrams(root, theme, embeddedMediaOnly = false) {
             ({ svg } = await window.mermaid.render(`diagram-${crypto.randomUUID()}`, definition));
           } else if (language === 'flowchart' || language === 'flow') {
             await loadVendorScript('vditorFlowchartScript', 'flowchart.js/flowchart.min.js');
-            window.flowchart.parse(source).drawSVG(host, {
-              'font-color': colors.ink, 'line-color': colors.muted, 'element-color': colors.accent, fill: colors.surface,
-            });
-            svg = host.innerHTML;
+            svg = drawFlowchart(host, source, colors);
           } else if (language === 'graphviz') {
             await loadVendorScript('vditorGraphVizScript', 'graphviz/viz.js');
             worker ??= graphvizWorker();
