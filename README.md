@@ -6,7 +6,7 @@
 
 <p align="center"><strong>写作时看见排版，改稿时看清变化。</strong></p>
 <p align="center">给长文、技术文档和改稿用的本地 Markdown 编辑器。边写边看排版，用键盘找到文件和命令，再把确认过的改动交付出去。</p>
-<p align="center"><a href="https://github.com/peterwangze/sujian-markdown/releases/tag/v1.4.1"><strong>下载 v1.4.1 离线安装包</strong></a> · Windows / macOS / Linux</p>
+<p align="center"><a href="https://github.com/peterwangze/sujian-markdown/releases/tag/v1.4.2"><strong>下载 v1.4.2 离线安装包</strong></a> · Windows / macOS / Linux</p>
 
 ## 用顺手的方式写作
 
@@ -57,6 +57,7 @@ AI 生成由你选择的外部工具完成。素笺在本机进行审阅、比�
 - **输入时就看到正文效果。** 标题、任务列表和表格随输入呈现。可以切换到源码、分栏预览和阅读模式。写长文时可调整正文宽度，并开启专注或打字机模式。
 - **用熟悉的 HTML 写技术说明。** 在即时编辑里查看上下标、键帽、高亮和注音。用 `<details>` 收起长日志、Markdown 清单和补充说明，读者可以按需展开。颜色、字号、纯色背景和对齐可随文档预览与导出 HTML。[试用 HTML 排版样例](docs/markdown-format-qa.md#cm-html)
 - **从仓库打开文档就能沿着目录读。** 文内链接识别 GitHub 的章节锚点，包括中文标题和重复标题，也能定位手写的 HTML 锚点。在即时编辑中用 `Shift+Enter` 换行，可在当前段落、引用或清单项中继续写。
+- **需要时再校对正文。** 正文拼写检查默认关闭。可在 **设置 → 编辑 → 正文拼写检查** 开启，右击错词可查看替换建议。即时、源码和分栏编辑均会跳过代码、公式、链接地址和常见技术标识符。
 - **把多份文档放在手边。** 用标签页切换文件，从大纲跳到章节，在工作区里跨文件搜索。长文档自动进入源码模式，便于滚动和查找。
 - **保住正在写的内容。** 重启后可以从侧栏恢复未保存的草稿。磁盘文件有外部改动时，可以对照磁盘版本，并把正在编辑的内容另存成副本。
 - **断网也能导出成品。** 本地公式、Mermaid、Flowchart.js 和 Graphviz 图表可离线渲染。包含 GitHub 行内公式和引用、清单内图表的文档可导出为 PDF、HTML、Word 或 EPUB。安装包内置 Pandoc，也支持 PNG 长图和 Reveal.js 幻灯片等格式。
@@ -78,15 +79,15 @@ Windows 使用安装目录中的 `Sujian.exe`。macOS 使用 `/Applications/Suji
 
 | 系统 | x64 / Intel | ARM64 / Apple 芯片 |
 | --- | --- | --- |
-| Windows | [EXE](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.1/Sujian-1.4.1-win-x64.exe) | [EXE](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.1/Sujian-1.4.1-win-arm64.exe) |
-| macOS 13+ | [DMG](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.1/Sujian-1.4.1-mac-x64.dmg) | [DMG](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.1/Sujian-1.4.1-mac-arm64.dmg) |
-| Linux | [AppImage](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.1/Sujian-1.4.1-linux-x86_64.AppImage) · [DEB](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.1/Sujian-1.4.1-linux-amd64.deb) | [AppImage](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.1/Sujian-1.4.1-linux-arm64.AppImage) · [DEB](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.1/Sujian-1.4.1-linux-arm64.deb) |
+| Windows | [EXE](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.2/Sujian-1.4.2-win-x64.exe) | [EXE](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.2/Sujian-1.4.2-win-arm64.exe) |
+| macOS 13+ | [DMG](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.2/Sujian-1.4.2-mac-x64.dmg) | [DMG](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.2/Sujian-1.4.2-mac-arm64.dmg) |
+| Linux | [AppImage](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.2/Sujian-1.4.2-linux-x86_64.AppImage) · [DEB](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.2/Sujian-1.4.2-linux-amd64.deb) | [AppImage](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.2/Sujian-1.4.2-linux-arm64.AppImage) · [DEB](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.2/Sujian-1.4.2-linux-arm64.deb) |
 
 - **Windows** 双击 EXE 安装。安装包未做 Authenticode 签名。ARM64 版的 Pandoc 使用 Windows 11 的 x64 仿真。
 - **macOS** 挂载 DMG 后，将素笺拖到“应用程序”。此版本采用临时签名，首次启动时可能需要在“隐私与安全性”中允许打开。[Apple 打开应用说明](https://support.apple.com/en-us/102445)
 - **Linux** 赋予 AppImage 执行权限后打开，或通过软件包管理器安装 DEB。运行依赖发行版提供的 Chromium 系统库。
 
-安装包包含应用运行时、渲染资源、字体与 Pandoc。六种系统与架构组合均通过成品启动检查。[SHA-256 清单](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.1/SHA256SUMS.txt) · [构建与验证记录](https://github.com/peterwangze/sujian-markdown/actions/workflows/release.yml)
+安装包包含应用运行时、渲染资源、字体与 Pandoc。六种系统与架构组合均通过成品启动检查。[SHA-256 清单](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.2/SHA256SUMS.txt) · [构建与验证记录](https://github.com/peterwangze/sujian-markdown/actions/workflows/release.yml)
 
 ## 开发与兼容范围
 

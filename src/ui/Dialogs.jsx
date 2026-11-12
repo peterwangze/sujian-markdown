@@ -181,7 +181,7 @@ export function FolderSearch({ path, close, jump, notify }) {
 
 const preferences = [
   ['sidebar', '显示侧栏'], ['focusMode', '专注模式'], ['typewriter', '打字机模式'],
-  ['spellcheck', '拼写检查'], ['autoSave', '自动保存已有文件'], ['resume', '恢复上次打开的文档'],
+  ['proseSpellcheck', '正文拼写检查'], ['autoSave', '自动保存已有文件'], ['resume', '恢复上次打开的文档'],
   ['wrap', '源码自动换行'], ['showHidden', '显示隐藏文件'], ['remoteMedia', '显示网络图片'],
 ]
 

@@ -219,12 +219,6 @@ async function createWindow(initialPaths = [], commands = []) {
     void safeOpenExternal(url).catch(() => {});
   });
   window.webContents.on('will-attach-webview', (event) => event.preventDefault());
-  window.webContents.on('context-menu', (event, details) => {
-    if (!details.isEditable || !details.misspelledWord) return;
-    const suggestions = details.dictionarySuggestions.map((suggestion) => ({ label: suggestion, click: () => window.webContents.replaceMisspelling(suggestion) }));
-    suggestions.push({ label: '添加到词典', click: () => window.webContents.session.addWordToSpellCheckerDictionary(details.misspelledWord) });
-    Menu.buildFromTemplate(suggestions).popup({ window });
-  });
   window.once('ready-to-show', () => {
     if (!smokeTest && !window.isDestroyed()) window.show();
   });
@@ -426,7 +420,7 @@ function installIpc({ assets, conversion, fonts, storage, operations }) {
       height: 36,
     });
   });
-  handle('set-spellcheck', ({ window }, enabled) => window.webContents.session.setSpellCheckerEnabled(Boolean(enabled)));
+  handle('set-spellcheck', ({ window }, enabled) => window.webContents.session.setSpellCheckerEnabled(enabled === true));
   handle('set-hotkeys', (_state, hotkeys) => setHotkeys(hotkeys));
   handle('set-menu-shortcuts-ignored', ({ window }, enabled) => {
     window.webContents.setIgnoreMenuShortcuts(Boolean(enabled));
@@ -459,6 +453,7 @@ async function launch(initialCommand) {
   });
   const storage = createStorage(userDataPath);
   const preferences = await storage.loadPreferences().catch(() => ({}));
+  session.defaultSession.setSpellCheckerEnabled(preferences?.proseSpellcheck === true);
   remoteMediaAllowed = Boolean(preferences?.remoteMedia);
   installIpc({ assets, conversion, fonts, storage, operations: createFileOperations() });
   setHotkeys(preferences?.hotkeys);

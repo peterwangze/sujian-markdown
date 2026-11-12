@@ -107,7 +107,9 @@ export default function App() {
     run(() => desktop.setTitleBarTheme({ dark, background: selectedTheme.colors.chrome, symbol: selectedTheme.colors.ink }))
   }, [dark, selectedTheme, run])
 
-  useEffect(() => { run(() => desktop.setSpellcheck?.(settings.spellcheck)) }, [settings.spellcheck, run])
+  useEffect(() => {
+    if (ready) run(() => desktop.setSpellcheck?.(settings.proseSpellcheck))
+  }, [ready, settings.proseSpellcheck, run])
   useEffect(() => { run(() => desktop.setHotkeys?.(nativeShortcutOverrides(settings.hotkeys))) }, [settings.hotkeys, run])
   useEffect(() => { run(() => desktop.setMenuShortcutsIgnored?.(modalOpen)) }, [modalOpen, run])
   useEffect(() => { run(() => desktop.setRemoteMedia?.(settings.remoteMedia)) }, [settings.remoteMedia, run])
@@ -637,7 +639,7 @@ export default function App() {
               onContextMenu={openEditorContext}
               assetUrl={assetUrl} resolveImage={resolveImage} theme={renderTheme}
               wrap={settings.wrap} allowRemoteMedia={settings.remoteMedia}
-              focusMode={settings.focusMode} typewriter={settings.typewriter} spellcheck={settings.spellcheck}/>
+              focusMode={settings.focusMode} typewriter={settings.typewriter} spellcheck={settings.proseSpellcheck}/>
           </div>
         )}
         {!active && <div className="empty-workspace"><BookOpen size={32} strokeWidth={1.25}/><h1>打开或新建文档</h1>

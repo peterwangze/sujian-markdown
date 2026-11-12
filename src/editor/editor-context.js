@@ -1,5 +1,7 @@
 import { syntaxTree } from '@codemirror/language';
 import { codeFenceAt } from './CodeLanguageControl.jsx';
+import { liveSpellcheckExcluded } from './live-spellcheck.js';
+import { sourceSpellcheckExcluded } from './source-spellcheck.js';
 
 const words = new Intl.Segmenter(undefined, { granularity: 'word' });
 
@@ -88,6 +90,7 @@ export function sourceContext(event, view, keyboard, snapshot) {
   }
   return {
     view, doc: state.doc, sourceSelection: selection,
+    sourceOffset: position ?? selection.main.head,
     selection: !selection.main.empty, editable: true, href, codeText,
     kind: codeText !== undefined ? 'code' : href ? 'link' : 'text',
     position: coordinates ? { x: coordinates.left, y: coordinates.bottom } : undefined,
@@ -166,16 +169,30 @@ export function restoreEditorContext(context) {
   return true;
 }
 
-export function spellingAt(range, getSuggestions) {
-  if (!range?.collapsed || range.startContainer.nodeType !== Node.TEXT_NODE || !getSuggestions) return null;
-  const { startContainer: node, startOffset } = range;
-  const segment = words.segment(node.data).containing(Math.min(startOffset, node.length - 1));
-  if (!segment?.isWordLike || segment.segment.length > 64) return null;
+function findMisspelling(text, offset, getSuggestions, excluded = () => false) {
+  if (!getSuggestions || !text.length) return null;
+  const segment = words.segment(text).containing(Math.min(offset, text.length - 1));
+  if (!segment?.isWordLike || segment.segment.length > 64 || excluded(segment.index, segment.index + segment.segment.length)) return null;
   const word = segment.segment;
   const suggestions = getSuggestions(word);
   if (!suggestions) return null;
+  return { word, from: segment.index, to: segment.index + word.length, suggestions: suggestions.slice(0, 5) };
+}
+
+export function spellingAt(root, range, getSuggestions) {
+  if (!range?.collapsed || range.startContainer.nodeType !== Node.TEXT_NODE || liveSpellcheckExcluded(root, range)) return null;
+  const { startContainer: node, startOffset } = range;
+  const match = findMisspelling(node.data, startOffset, getSuggestions);
+  if (!match) return null;
   const wordRange = range.cloneRange();
-  wordRange.setStart(node, segment.index);
-  wordRange.setEnd(node, segment.index + word.length);
-  return { word, range: wordRange, suggestions: suggestions.slice(0, 5) };
+  wordRange.setStart(node, match.from);
+  wordRange.setEnd(node, match.to);
+  return { word: match.word, range: wordRange, suggestions: match.suggestions };
+}
+
+export function sourceSpellingAt(state, offset, getSuggestions) {
+  const line = state.doc.lineAt(offset);
+  const match = findMisspelling(line.text, offset - line.from, getSuggestions,
+    (from, to) => sourceSpellcheckExcluded(state, line.from + from, line.from + to));
+  return match && { ...match, from: line.from + match.from, to: line.from + match.to };
 }

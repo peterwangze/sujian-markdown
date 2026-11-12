@@ -11,17 +11,19 @@ import { resolveTheme } from '../theme/themes.js';
 import { isComposingKey } from '../workspace/commands.js';
 import { desktop } from '../workspace/desktop.js';
 import { changeFenceLanguage, CodeLanguageControl, codeFenceAt, codeFenceLanguage, codeFenceSource, focusCodeFence, liveFenceHistorySources, normalizeLiveFencePreviews } from './CodeLanguageControl.jsx';
-import { contextSelection, domContext, linkAddress, restoreEditorContext, sourceContext, spellingAt } from './editor-context.js';
+import { contextSelection, domContext, linkAddress, restoreEditorContext, sourceContext, sourceSpellingAt, spellingAt } from './editor-context.js';
 import { completeFenceHeaders, replaceFenceLanguage, structuredFenceSources } from './fence-info.js';
 import { formatMarkdown } from './format.js';
 import { createLiveHtmlDetails } from './live-html-details.js';
 import { decorateLiveInlineHtml } from './live-html-inline.js';
+import { decorateLiveSpellcheck } from './live-spellcheck.js';
 import { openEnclosingDetails, scrollToMarkdownAnchor } from './markdown-anchors.js';
 import { matchMarkdown, projectMarkdownEdit, replacementText } from './markdown-edits.js';
 import { handleRichCodeKeys } from './rich-code-keys.js';
 import { handleRichListKeys } from './rich-list-keys.js';
 import { handleRichHardBreak, handleRichParagraphKeys } from './rich-paragraph-keys.js';
 import { sourceKeys } from './source-keys.js';
+import { sourceSpellcheckExclusions } from './source-spellcheck.js';
 import { highlightCode, isLocalImage, loadVendorScript, markdownOptions, renderLegacyDiagram, renderLiveGithubMath, renderPreview, vendorRoot } from './render-document.js';
 import './editor.css';
 
@@ -58,11 +60,16 @@ const tableContextActions = {
 };
 const pasteActions = { paste: 'paste', 'paste-plain': 'pasteAndMatchStyle' };
 
-function sourceExtensions(onUpdate, latest, wrapping) {
+function sourceSpellcheckSetting(enabled) {
+  return [EditorView.contentAttributes.of({ spellcheck: String(enabled) }), enabled ? sourceSpellcheckExclusions : []];
+}
+
+function sourceExtensions(onUpdate, latest, wrapping, spellcheck) {
   return [
     markdown({ addKeymap: false }), sourceKeys, syntaxHighlighting(sourceSyntax), sourceAppearance,
     history(), drawSelection(), dropCursor(), highlightActiveLine(),
     wrapping.of(latest.current.wrap ? EditorView.lineWrapping : []),
+    spellcheck.of(sourceSpellcheckSetting(latest.current.spellcheck)),
     keymap.of([...defaultKeymap, ...historyKeymap]),
     EditorView.contentAttributes.of({
       'aria-label': 'Markdown 源码', 'aria-description': '先按 Escape，再按 Tab 或 Shift+Tab 可移出编辑区。',
@@ -215,6 +222,7 @@ export function Editor({
   const rich = useRef(null);
   const source = useRef(null);
   const wrapping = useRef(new Compartment());
+  const sourceSpelling = useRef(new Compartment());
   const latest = useRef(null);
   const content = useRef({ id: docId, raw: value, rich: null });
   const imageCache = useRef(new Map());
@@ -382,7 +390,7 @@ export function Editor({
   }
 
   useLayoutEffect(() => {
-    const extensions = sourceExtensions(sourceUpdate, latest, wrapping.current);
+    const extensions = sourceExtensions(sourceUpdate, latest, wrapping.current, sourceSpelling.current);
     const view = new EditorView({ parent: sourceHost.current, state: EditorState.create({ doc: sourceText(content.current.raw), extensions }) });
     source.current = view;
     return () => {
@@ -543,6 +551,7 @@ export function Editor({
           refreshHtml = () => {
             if (instance.vditor.ir.composingLock) return;
             decorateLiveInlineHtml(editable);
+            if (latest.current.spellcheck) decorateLiveSpellcheck(editable);
             liveDetails.current.refresh(content.current.id);
           };
           const decorate = () => {
@@ -620,9 +629,10 @@ export function Editor({
       const state = remembered?.source;
       if (state?.doc.toString() === next) {
         view.setState(state);
-        view.dispatch({ effects: wrapping.current.reconfigure(latest.current.wrap ? EditorView.lineWrapping : []) });
+        view.dispatch({ effects: [wrapping.current.reconfigure(latest.current.wrap ? EditorView.lineWrapping : []),
+          sourceSpelling.current.reconfigure(sourceSpellcheckSetting(latest.current.spellcheck))] });
       } else {
-        view.setState(EditorState.create({ doc: next, extensions: sourceExtensions(sourceUpdate, latest, wrapping.current) }));
+        view.setState(EditorState.create({ doc: next, extensions: sourceExtensions(sourceUpdate, latest, wrapping.current, sourceSpelling.current) }));
       }
       view.scrollDOM.scrollTo(remembered?.sourceScroll ?? { top: 0, left: 0 });
     } else if (view && view.state.doc.toString() !== next && (mode !== 'live' || changedText)) {
@@ -647,14 +657,21 @@ export function Editor({
     }
   }, [docId, mode, value]);
 
+  useLayoutEffect(() => {
+    source.current?.dispatch({ effects: sourceSpelling.current.reconfigure(sourceSpellcheckSetting(spellcheck)) });
+    const editable = rich.current?.vditor.ir.element;
+    if (editable) {
+      editable.spellcheck = spellcheck;
+      if (spellcheck && !rich.current.vditor.ir.composingLock) decorateLiveSpellcheck(editable);
+    }
+  }, [spellcheck]);
+
   useEffect(() => {
-    if (source.current) source.current.contentDOM.spellcheck = spellcheck;
     if (rich.current) {
-      rich.current.vditor.ir.element.spellcheck = spellcheck;
       rich.current.vditor.options.typewriterMode = typewriter;
       setLiveTheme(rich.current, theme);
     }
-  }, [spellcheck, theme, typewriter, docId]);
+  }, [theme, typewriter, docId]);
 
   useEffect(() => {
     imageCache.current.clear();
@@ -890,8 +907,10 @@ export function Editor({
     const context = target.view ? sourceContext(event, target.view, keyboard, snapshot) :
       domContext(event, target.root, target.editable, keyboard, snapshot);
 
-    const spelling = mode === 'live' && spellcheck && context.kind === 'text'
-      ? spellingAt(context.range, desktop.spellingSuggestions) : null;
+    const canCheckSpelling = spellcheck && context.editable && !context.selection && context.kind !== 'code';
+    const spelling = canCheckSpelling ? (context.view
+      ? sourceSpellingAt(context.view.state, context.sourceOffset, desktop.spellingSuggestions)
+      : spellingAt(context.root, context.range, desktop.spellingSuggestions)) : null;
     editorContext.current = { ...context, mode, docId, spelling };
     onContextMenu(event, {
       selection: context.selection, editable: context.editable, mode, kind: context.kind,
@@ -918,11 +937,19 @@ export function Editor({
     }
     if (id === 'copy' || id === 'cut') return copyContextSelection(context, id === 'cut');
     if (!context.editable) return false;
-    if (id === 'add-to-dictionary' && context.spelling) return desktop.addSpellingWord(context.spelling.word);
-    if (id.startsWith('spelling-') && context.spelling) {
-      const { range, suggestions, word } = context.spelling;
+    if (id === 'add-to-dictionary' && latest.current.spellcheck && context.spelling) return desktop.addSpellingWord(context.spelling.word);
+    if (id.startsWith('spelling-') && latest.current.spellcheck && context.spelling) {
+      const { from, to, range, suggestions, word } = context.spelling;
       const replacement = suggestions[Number(id.slice('spelling-'.length))];
-      if (!replacement || !context.root.contains(range.startContainer) || range.toString() !== word) return false;
+      if (!replacement) return false;
+      if (context.view) {
+        if (context.view.state.sliceDoc(from, to) !== word) return false;
+        context.view.dispatch({
+          changes: { from, to, insert: replacement }, selection: { anchor: from + replacement.length }, userEvent: 'input',
+        });
+        return true;
+      }
+      if (!context.root.contains(range.startContainer) || range.toString() !== word) return false;
       const selection = context.root.ownerDocument.getSelection();
       selection.removeAllRanges();
       selection.addRange(range);

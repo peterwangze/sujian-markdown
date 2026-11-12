@@ -6,7 +6,7 @@ import { FONT_DEFAULTS } from './fonts.js'
 
 export const defaults = {
   theme: 'paper', mode: 'live', sidebar: true, fontSize: 17, lineHeight: 1.68, width: 790, focusMode: false,
-  typewriter: false, spellcheck: true, autoSave: false, resume: true, wrap: true,
+  typewriter: false, proseSpellcheck: false, autoSave: false, resume: true, wrap: true,
   workspace: null, recent: [], pinned: [], openPaths: [], customCss: '', imageFolder: '',
   imageRoot: '', uploader: '', uploaderArgs: '', fileList: false, fileSort: 'name', showHidden: false, remoteMedia: false, hotkeys: {},
   ...FONT_DEFAULTS,
@@ -291,7 +291,10 @@ export function useWorkspace(notify, beforeClose) {
         desktop.initialDocuments?.().catch(error => { handle(error); return [] }) ?? [],
       ])
       if (!live) return
-      configure(prefs ?? {})
+      const saved = { ...prefs }
+      // Earlier releases persisted the default-on value even without an opt-in.
+      delete saved.spellcheck
+      configure({ ...saved, proseSpellcheck: saved.proseSpellcheck === true })
       setRecoverable(Array.isArray(drafts) ? drafts : [])
       if (initial.length) {
         const docs = initial.map(fromDisk)
