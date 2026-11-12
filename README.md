@@ -6,7 +6,7 @@
 
 <p align="center"><strong>写作时看见排版，改稿时看清变化。</strong></p>
 <p align="center">给长文、技术文档和改稿用的本地 Markdown 编辑器。边写边看排版，用键盘找到文件和命令，再把确认过的改动交付出去。</p>
-<p align="center"><a href="https://github.com/peterwangze/sujian-markdown/releases/tag/v1.3.2"><strong>下载 v1.3.2 离线安装包</strong></a> · Windows / macOS / Linux</p>
+<p align="center"><a href="https://github.com/peterwangze/sujian-markdown/releases/tag/v1.4.0"><strong>下载 v1.4.0 离线安装包</strong></a> · Windows / macOS / Linux</p>
 
 ## 用顺手的方式写作
 
@@ -28,7 +28,7 @@
 - **选中文字后就地处理。** 右击选区可剪切、复制、加粗、斜体、加删除线或转为行内代码。粘贴会替换选区，右击选区外则把光标移到点击位置。
 - **在元素上找到对应操作。** 右击表格可增删行列，右击代码块可复制代码或更改语言，右击链接可打开或复制地址。
 - **在文件列表里直接审阅。** 右击侧栏文件、最近文档或标签页，选择 **审阅修订稿**。目标文档可以在后台打开，你仍可留在正在写的标签页。用键盘聚焦目标后，也可按 `Shift+F10` 打开菜单。
-- **在代码旁选择语言或图表类型。** 在即时编辑中点击代码块右下角的标签，用语言名或 `py`、`ts`、`proto` 等别名搜索。可直接选择 HTTP、XML、Shell 会话、Windows 批处理、INI、PostgreSQL 等常见格式，也可输入自定义标记。图表菜单包含 Mermaid、Flowchart.js、Graphviz 和旧版时序图。Flowchart.js 支持 `flowchart` 与 `flow`，正文以 `flowchart LR` 或 `graph TD` 开头时选择 `mermaid`。
+- **在代码旁选择语言或图表类型。** 在即时编辑中点击代码块右下角的标签，用语言名或 `py`、`ts`、`proto` 等别名搜索。已有的 Pandoc 围栏代码和 Quarto 代码单元也能高亮，切换语言时保留原有属性和选项。点击代码块中的复制按钮可提取代码。Flowchart.js 支持 `flowchart` 和 `flow`，Graphviz 支持 `graphviz` 和 `dot`，正文以 `flowchart LR` 或 `graph TD` 开头时选择 `mermaid`。
 
 ![在素笺代码块右下角打开语言选择器，输入 ja 后列出 JavaScript 和 Java。](docs/images/sujian-code-language.png)
 
@@ -55,9 +55,10 @@ AI 生成由你选择的外部工具完成。素笺在本机进行审阅、比�
 ![素笺暖白主题下的单栏即时编辑。左侧是本地文件树，正文展示标题、提纲、引用和表格。](docs/images/sujian-writing.png)
 
 - **输入时就看到正文效果。** 标题、任务列表和表格随输入呈现。可以切换到源码、分栏预览和阅读模式。写长文时可调整正文宽度，并开启专注或打字机模式。
+- **从仓库打开文档就能沿着目录读。** 文内链接识别 GitHub 的章节锚点，包括中文标题和重复标题，也能定位手写的 HTML 锚点。在即时编辑中用 `Shift+Enter` 换行，可在当前段落、引用或清单项中继续写。
 - **把多份文档放在手边。** 用标签页切换文件，从大纲跳到章节，在工作区里跨文件搜索。长文档自动进入源码模式，便于滚动和查找。
 - **保住正在写的内容。** 重启后可以从侧栏恢复未保存的草稿。磁盘文件有外部改动时，可以对照磁盘版本，并把正在编辑的内容另存成副本。
-- **断网也能导出成品。** 本地公式、Mermaid 和 Flowchart.js 图表可离线渲染。安装包内置 Pandoc，支持 PDF、HTML、PNG 长图、Word、EPUB 和 Reveal.js 幻灯片等格式。
+- **断网也能导出成品。** 本地公式、Mermaid、Flowchart.js 和 Graphviz 图表可离线渲染。包含 GitHub 行内公式和引用、清单内图表的文档可导出为 PDF、HTML、Word 或 EPUB。安装包内置 Pandoc，也支持 PNG 长图和 Reveal.js 幻灯片等格式。
 
 ![素笺深墨主题下的分栏预览。左边是大纲和 Markdown 源码，右边渲染了公式与 Mermaid 流程图。](docs/images/sujian-split.png)
 
@@ -76,15 +77,15 @@ Windows 使用安装目录中的 `Sujian.exe`。macOS 使用 `/Applications/Suji
 
 | 系统 | x64 / Intel | ARM64 / Apple 芯片 |
 | --- | --- | --- |
-| Windows | [EXE](https://github.com/peterwangze/sujian-markdown/releases/download/v1.3.2/Sujian-1.3.2-win-x64.exe) | [EXE](https://github.com/peterwangze/sujian-markdown/releases/download/v1.3.2/Sujian-1.3.2-win-arm64.exe) |
-| macOS 13+ | [DMG](https://github.com/peterwangze/sujian-markdown/releases/download/v1.3.2/Sujian-1.3.2-mac-x64.dmg) | [DMG](https://github.com/peterwangze/sujian-markdown/releases/download/v1.3.2/Sujian-1.3.2-mac-arm64.dmg) |
-| Linux | [AppImage](https://github.com/peterwangze/sujian-markdown/releases/download/v1.3.2/Sujian-1.3.2-linux-x86_64.AppImage) · [DEB](https://github.com/peterwangze/sujian-markdown/releases/download/v1.3.2/Sujian-1.3.2-linux-amd64.deb) | [AppImage](https://github.com/peterwangze/sujian-markdown/releases/download/v1.3.2/Sujian-1.3.2-linux-arm64.AppImage) · [DEB](https://github.com/peterwangze/sujian-markdown/releases/download/v1.3.2/Sujian-1.3.2-linux-arm64.deb) |
+| Windows | [EXE](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.0/Sujian-1.4.0-win-x64.exe) | [EXE](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.0/Sujian-1.4.0-win-arm64.exe) |
+| macOS 13+ | [DMG](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.0/Sujian-1.4.0-mac-x64.dmg) | [DMG](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.0/Sujian-1.4.0-mac-arm64.dmg) |
+| Linux | [AppImage](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.0/Sujian-1.4.0-linux-x86_64.AppImage) · [DEB](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.0/Sujian-1.4.0-linux-amd64.deb) | [AppImage](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.0/Sujian-1.4.0-linux-arm64.AppImage) · [DEB](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.0/Sujian-1.4.0-linux-arm64.deb) |
 
 - **Windows** 双击 EXE 安装。安装包未做 Authenticode 签名。ARM64 版的 Pandoc 使用 Windows 11 的 x64 仿真。
 - **macOS** 挂载 DMG 后，将素笺拖到“应用程序”。此版本采用临时签名，首次启动时可能需要在“隐私与安全性”中允许打开。[Apple 打开应用说明](https://support.apple.com/en-us/102445)
 - **Linux** 赋予 AppImage 执行权限后打开，或通过软件包管理器安装 DEB。运行依赖发行版提供的 Chromium 系统库。
 
-安装包包含应用运行时、渲染资源、字体与 Pandoc。六种系统与架构组合均通过成品启动检查。[SHA-256 清单](https://github.com/peterwangze/sujian-markdown/releases/download/v1.3.2/SHA256SUMS.txt) · [构建与验证记录](https://github.com/peterwangze/sujian-markdown/actions/workflows/release.yml)
+安装包包含应用运行时、渲染资源、字体与 Pandoc。六种系统与架构组合均通过成品启动检查。[SHA-256 清单](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.0/SHA256SUMS.txt) · [构建与验证记录](https://github.com/peterwangze/sujian-markdown/actions/workflows/release.yml)
 
 ## 开发与兼容范围
 
@@ -95,6 +96,8 @@ npm ci
 npm run build
 npm start
 ```
+
+想先试用自己的文档里常见的语法，可以在素笺中打开仓库附带的验收样例，切换即时编辑、分栏和阅读模式，或导出为 Word、PDF 核对效果。测试相对图片时保留仓库目录结构。[Markdown 格式验收样例](docs/markdown-format-qa.md) · [实测结果与兼容范围](docs/markdown-format-results.md)
 
 运行 `npm test` 执行自动化回归。使用 `npm run package -- win32 x64` 构建 Windows x64 离线安装包，也可指定 `darwin` 或 `linux` 和对应架构。
 

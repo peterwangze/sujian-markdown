@@ -6,6 +6,44 @@ function paragraphAt(node) {
   return paragraph && !paragraph.closest('li, table, [contenteditable="false"]') ? paragraph : null;
 }
 
+function breakBlockAt(node, editable) {
+  const element = node?.nodeType === Node.ELEMENT_NODE ? node : node?.parentElement;
+  const excluded = element?.closest('pre, code, table, .vditor-ir__marker, .vditor-ir__preview, [contenteditable="false"]');
+  if (excluded && excluded !== editable) return null;
+  return element?.closest('p[data-block="0"], li');
+}
+
+export function handleRichHardBreak(event, editable, engine) {
+  if (event.key !== 'Enter' || !event.shiftKey || event.ctrlKey || event.metaKey || event.altKey) return false;
+  const doc = editable.ownerDocument;
+  const selection = doc.getSelection();
+  if (!selection?.rangeCount) return false;
+  const range = selection.getRangeAt(0);
+  const block = breakBlockAt(range.startContainer, editable);
+  if (!block || block !== breakBlockAt(range.endContainer, editable) || !editable.contains(block)) return false;
+
+  event.preventDefault();
+  event.stopImmediatePropagation();
+  const marker = doc.createElement('span');
+  marker.className = 'vditor-ir__node';
+  marker.dataset.type = 'html-inline';
+  marker.dataset.sujianBreak = '';
+  const source = doc.createElement('code');
+  source.className = 'vditor-ir__marker';
+  // Lute serializes an editable DOM <br> as a soft break. Its HTML marker
+  // preserves an explicit break even before the user types the next line.
+  source.textContent = '<br>';
+  marker.append(source);
+  range.deleteContents();
+  range.insertNode(marker);
+  const caret = doc.createTextNode('\u200b');
+  marker.after(caret);
+  selection.collapse(caret, caret.length);
+  engine.ir.preventInput = true;
+  editable.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertLineBreak' }));
+  return true;
+}
+
 export function handleRichParagraphKeys(event, editable) {
   if (event.key !== 'Tab' || event.ctrlKey || event.metaKey || event.altKey) return false;
   const doc = editable.ownerDocument;

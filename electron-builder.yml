@@ -13,6 +13,7 @@ directories:
 files:
   - dist/**/*
   - electron/**/*
+  - src/editor/github-math.js
   - '!electron/**/*.test.*'
   - '!node_modules/**/*'
 extraResources:

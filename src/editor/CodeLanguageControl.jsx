@@ -1,40 +1,99 @@
 import { useLayoutEffect, useRef, useState } from 'react';
 import { ChevronDown } from 'lucide-react';
 import { CodeLanguagePicker } from './CodeLanguagePicker.jsx';
+import { fenceInfo, replaceFenceLanguage } from './fence-info.js';
 
 const fenceSelector = '[data-type="code-block"]:has(> [data-type="code-block-info"])';
 const languageInfo = block => block.querySelector(':scope > [data-type="code-block-info"]');
-const languageToken = /^[A-Za-z0-9_+#.-]{1,48}$/;
+const infoText = info => info?.textContent.replace(/^\u200b/, '') ?? '';
+const codeMarker = block => block?.querySelector(':scope > pre.vditor-ir__marker--pre > code');
 
 export function codeFenceAt(node) {
   const element = node?.nodeType === Node.ELEMENT_NODE ? node : node?.parentElement;
   return element?.closest(fenceSelector) ?? null;
 }
 
+function matchingSource(block, source) {
+  if (!source || !block.matches(fenceSelector)) return null;
+  const shown = infoText(languageInfo(block)).trim();
+  const prefix = /^\S+/.exec(source.value.trim())?.[0];
+  const firstLine = codeMarker(block)?.textContent.split(/\r?\n/, 1)[0].replace(/\u200b/g, '').trim();
+  return shown === prefix && firstLine === source.firstLine ? source : null;
+}
+
+export function codeFenceSource(editable, block, sources) {
+  if (!sources.length) return null;
+  const blocks = Array.from(editable.querySelectorAll('[data-type="code-block"]'));
+  return blocks.length === sources.length ? matchingSource(block, sources[blocks.indexOf(block)]) : null;
+}
+
+export function liveFenceHistorySources(editable, sources) {
+  if (!sources.some(Boolean)) return sources;
+  const blocks = editable.querySelectorAll('[data-type="code-block"]');
+  if (blocks.length !== sources.length) return sources;
+  return sources.map((source, index) => {
+    if (!source) return null;
+    const block = blocks[index];
+    // Vditor snapshots the live DOM for undo, but serializes only the first
+    // token of the fence header. Keep the complete source in that snapshot.
+    const saved = block.dataset.sujianFenceInfo;
+    if (saved) return { value: saved };
+    if (matchingSource(block, source)) block.dataset.sujianFenceInfo = source.value;
+    return source;
+  });
+}
+
+export function codeFenceLanguage(block, source) {
+  const info = fenceInfo(source?.value ?? infoText(languageInfo(block)));
+  return info.kind === 'opaque' ? undefined : info.language;
+}
+
+export function normalizeLiveFencePreviews(editable, sources) {
+  const previews = [];
+  const blocks = editable.querySelectorAll('[data-type="code-block"]');
+  for (const [index, block] of blocks.entries()) {
+    if (!block.matches(fenceSelector)) continue;
+    const source = blocks.length === sources.length ? matchingSource(block, sources[index]) : null;
+    const { kind, language } = fenceInfo(source?.value ?? infoText(languageInfo(block)));
+    if ((kind !== 'attributes' && kind !== 'cell') || !language) continue;
+    const preview = block.querySelector(':scope > .vditor-ir__preview');
+    const code = preview?.matches('pre') ? preview.querySelector(':scope > code') : preview?.querySelector(':scope > pre > code');
+    if (!code) continue;
+    const normalized = 'language-' + language;
+    if (code.classList.contains(normalized)) continue;
+    for (const name of [...code.classList]) if (name.startsWith('language-')) code.classList.remove(name);
+    code.classList.add(normalized);
+    previews.push(preview);
+  }
+  return previews;
+}
+
+export function focusCodeFence(editable, block) {
+  editable.focus({ preventScroll: true });
+  editable.ownerDocument.getSelection().collapse(codeMarker(block) ?? editable, 0);
+}
+
 export function changeFenceLanguage(editable, block, language) {
   const info = languageInfo(block);
-  if (!info || !editable.contains(block) || (language && !languageToken.test(language))) return false;
-  const previous = info.textContent.replace(/^\u200b/, '');
-  const suffix = previous.match(/^\S+([ \t].*)$/)?.[1] ?? '';
-  editable.focus({ preventScroll: true });
-  const doc = editable.ownerDocument;
-  const selection = doc.getSelection();
-  const marker = block.querySelector(':scope > pre.vditor-ir__marker--pre > code');
-  selection.collapse(marker ?? info, 0);
-  const next = language ? language + suffix : '';
+  if (!info || !editable.contains(block)) return false;
+  const previous = infoText(info);
+  const next = replaceFenceLanguage(previous, language);
+  if (next === null) return false;
+  focusCodeFence(editable, block);
   if (previous === next) return true;
   info.textContent = '\u200b' + next;
   editable.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText' }));
   return true;
 }
 
-export function CodeLanguageControl({ target, request, onChange }) {
+export function CodeLanguageControl({ target, request, sourceFor, onChange }) {
   const [selected, setSelected] = useState(null);
   const [position, setPosition] = useState(null);
   const control = useRef(null);
   const previousCaret = useRef(null);
   const block = selected?.isConnected ? selected : target;
-  const language = block?.isConnected ? languageInfo(block)?.textContent.replace(/^\u200b/, '').trim().split(/\s+/)[0] : '';
+  const info = block?.isConnected ? fenceInfo(sourceFor(block)?.value ?? infoText(languageInfo(block))) : null;
+  const language = info?.language;
 
   useLayoutEffect(() => {
     if (request?.block.isConnected) openPicker(request.block);
@@ -89,7 +148,7 @@ export function CodeLanguageControl({ target, request, onChange }) {
     return () => document.removeEventListener('pointerdown', dismiss, true);
   }, [selected]);
 
-  if (!block?.isConnected || !position) return null;
+  if (!block?.isConnected || !position || info.kind === 'opaque') return null;
   const open = selected === block;
   const close = () => {
     setSelected(null);
@@ -110,7 +169,7 @@ export function CodeLanguageControl({ target, request, onChange }) {
       <span>{language || '纯文本'}</span><ChevronDown size={13} aria-hidden="true"/>
     </button>
     {open && <div className="editor-code-language-popup">
-      <CodeLanguagePicker language={language} onClose={close} onApply={value => {
+      <CodeLanguagePicker language={language} allowPlain={info.kind !== 'cell'} onClose={close} onApply={value => {
         if (!onChange(block, value)) return;
         setSelected(null);
       }}/>

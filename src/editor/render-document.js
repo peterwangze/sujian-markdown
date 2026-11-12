@@ -2,6 +2,9 @@ import DOMPurify from 'dompurify';
 import Vditor from 'vditor';
 import editorStyles from 'vditor/dist/index.css?inline';
 import { resolveTheme, themeDeclarations } from '../theme/themes.js';
+import { unwrapGithubMath } from './github-math.js';
+import { normalizeFenceLanguagesForPreview } from './fence-info.js';
+import { captureExplicitHeadingIds, installMarkdownHeadingAnchors } from './markdown-anchors.js';
 
 export const vendorRoot = new URL(`${import.meta.env.BASE_URL}vendor/vditor/`, document.baseURI).href.replace(/\/$/, '');
 const assets = `${vendorRoot}/dist`;
@@ -89,8 +92,7 @@ function renderError(node, error) {
   node.append(hint);
 }
 
-async function renderMath(root) {
-  const expressions = [...root.querySelectorAll('.language-math')];
+async function renderMath(expressions, live = false) {
   if (!expressions.length) return;
 
   installMathStyles();
@@ -103,14 +105,29 @@ async function renderMath(root) {
   }
 
   for (const node of expressions) {
-    const displayMode = node.tagName === 'DIV' || node.closest('pre') !== null;
+    const displayMode = node.tagName === 'DIV' || node.matches('pre > code');
+    const source = node.dataset.math ?? node.textContent;
     try {
-      const html = window.katex.renderToString(node.textContent, { displayMode, trust: false });
+      const html = window.katex.renderToString(displayMode ? source : unwrapGithubMath(source), { displayMode, trust: false });
+      if (live) node.dataset.math = source;
       node.replaceChildren(sanitizedFragment(html, true));
     } catch (error) {
       renderError(node, error);
     }
   }
+}
+
+const liveGithubMath = new WeakSet();
+
+export function renderLiveGithubMath(root) {
+  const expressions = [];
+  for (const node of root.querySelectorAll('.vditor-ir__preview > span.language-math')) {
+    const source = node.dataset.math ?? node.textContent;
+    if (liveGithubMath.has(node) || source === unwrapGithubMath(source)) continue;
+    liveGithubMath.add(node);
+    expressions.push(node);
+  }
+  void renderMath(expressions, true);
 }
 
 function graphvizWorker() {
@@ -144,8 +161,8 @@ function drawFlowchart(host, source, colors) {
   }
 }
 
-async function renderDiagrams(root, theme, embeddedMediaOnly = false) {
-  const languages = ['mermaid', 'flowchart', 'flow', 'graphviz', 'sequence'];
+async function renderDiagrams(root, theme, { embeddedMediaOnly = false, diagramSources } = {}) {
+  const languages = ['mermaid', 'flowchart', 'flow', 'graphviz', 'dot', 'sequence'];
   const diagrams = [...root.querySelectorAll(languages.map((language) => `div.language-${language}, pre > code.language-${language}`).join(', '))];
   if (!diagrams.length) return;
   const { colors, scheme } = resolveTheme(theme);
@@ -153,6 +170,7 @@ async function renderDiagrams(root, theme, embeddedMediaOnly = false) {
   // Mermaid's configuration is global. Keep simultaneous previews and exports in order.
   const run = diagramQueue.then(async () => {
     let worker;
+    let graphviz;
     try {
       for (const [sourceIndex, code] of diagrams.entries()) {
         const language = languages.find((name) => code.classList.contains(`language-${name}`));
@@ -164,6 +182,7 @@ async function renderDiagrams(root, theme, embeddedMediaOnly = false) {
         host.dataset.diagramLanguage = language;
         try {
           const source = code.textContent;
+          if (diagramSources) diagramSources[sourceIndex] = { language, source };
           if (embeddedMediaOnly && /@\s*\{|%%\s*\{|^\s*---\s*$|(?:https?|file|sujian-asset):|\/\/|<\s*(?:img|image|style)\b|\b(?:url|image-set)\s*\(|\b(?:image|shapefile|href|stylesheet)\s*=/im.test(source)) {
             throw new Error('审阅预览已省略含媒体或自定义配置的图表。可在源码差异中查看。');
           }
@@ -184,10 +203,11 @@ async function renderDiagrams(root, theme, embeddedMediaOnly = false) {
           } else if (language === 'flowchart' || language === 'flow') {
             await loadVendorScript('vditorFlowchartScript', 'flowchart.js/flowchart.min.js');
             svg = drawFlowchart(host, source, colors);
-          } else if (language === 'graphviz') {
+          } else if (language === 'graphviz' || language === 'dot') {
             await loadVendorScript('vditorGraphVizScript', 'graphviz/viz.js');
             worker ??= graphvizWorker();
-            svg = (await new window.Viz({ worker }).renderSVGElement(source)).outerHTML;
+            graphviz ??= new window.Viz({ worker });
+            svg = (await graphviz.renderSVGElement(source)).outerHTML;
           }
           const fragment = sanitizedFragment(svg, 'svg');
           if (embeddedMediaOnly) restrictReviewResources(fragment);
@@ -267,7 +287,7 @@ function highlightCss(theme) {
   return `${assets}/js/highlight.js/styles/${resolveTheme(theme).scheme === 'dark' ? 'github-dark' : 'github'}.min.css`;
 }
 
-async function highlightCode(root, theme, preview) {
+export async function highlightCode(root, theme, preview) {
   const codes = [...root.querySelectorAll('pre > code[class*="language-"]')];
   if (!codes.length) return;
 
@@ -307,10 +327,15 @@ function restrictReviewResources(root) {
 }
 
 export async function renderPreview(markdown, {
-  resolveImage, theme = 'light', inlineRemote = false, allowRemoteMedia = true, preview = true, embeddedMediaOnly = false,
+  resolveImage, theme = 'light', inlineRemote = false, allowRemoteMedia = true, preview = true, embeddedMediaOnly = false, diagramSources,
 } = {}) {
   await loadVendorScript('vditorLuteScript', 'lute/lute.min.js');
-  const html = await Vditor.md2html(markdown, { cdn: vendorRoot, markdown: markdownOptions });
+  const explicitHeadingIds = new Map();
+  const renderers = /\{[^\r\n{}]*#[^\r\n{}]*\}/.test(markdown)
+    ? captureExplicitHeadingIds(window.Lute, explicitHeadingIds) : undefined;
+  const html = await Vditor.md2html(normalizeFenceLanguagesForPreview(markdown), {
+    cdn: vendorRoot, markdown: markdownOptions, renderers,
+  });
   const root = document.createElement('article');
   root.className = 'vditor-reset';
   const fragment = sanitizedFragment(html);
@@ -324,13 +349,19 @@ export async function renderPreview(markdown, {
     }
   }
   root.append(fragment);
+  const headingDestinations = installMarkdownHeadingAnchors(root, explicitHeadingIds);
   for (const item of root.querySelectorAll('.vditor-toc [data-target-id]')) {
     const link = document.createElement('a');
-    link.href = `#${encodeURIComponent(item.getAttribute('data-target-id'))}`;
+    const id = item.getAttribute('data-target-id');
+    link.href = `#${encodeURIComponent(headingDestinations.get(id) ?? id)}`;
     link.append(...item.childNodes);
     item.replaceWith(link);
   }
-  await Promise.all([renderMath(root), renderDiagrams(root, theme, embeddedMediaOnly), resolveAssets(root, embeddedMediaOnly ? undefined : resolveImage, inlineRemote)]);
+  await Promise.all([
+    renderMath([...root.querySelectorAll('.language-math')]),
+    renderDiagrams(root, theme, { embeddedMediaOnly, diagramSources }),
+    resolveAssets(root, embeddedMediaOnly ? undefined : resolveImage, inlineRemote),
+  ]);
   await highlightCode(root, theme, preview);
   if (embeddedMediaOnly) restrictReviewResources(root);
   return root;

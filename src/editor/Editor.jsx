@@ -10,15 +10,17 @@ import 'vditor/dist/index.css';
 import { resolveTheme } from '../theme/themes.js';
 import { isComposingKey } from '../workspace/commands.js';
 import { desktop } from '../workspace/desktop.js';
-import { changeFenceLanguage, CodeLanguageControl, codeFenceAt } from './CodeLanguageControl.jsx';
-import { contextSelection, domContext, restoreEditorContext, sourceContext, spellingAt } from './editor-context.js';
+import { changeFenceLanguage, CodeLanguageControl, codeFenceAt, codeFenceLanguage, codeFenceSource, focusCodeFence, liveFenceHistorySources, normalizeLiveFencePreviews } from './CodeLanguageControl.jsx';
+import { contextSelection, domContext, linkAddress, restoreEditorContext, sourceContext, spellingAt } from './editor-context.js';
+import { completeFenceHeaders, replaceFenceLanguage, structuredFenceSources } from './fence-info.js';
 import { formatMarkdown } from './format.js';
+import { scrollToMarkdownAnchor } from './markdown-anchors.js';
 import { matchMarkdown, projectMarkdownEdit, replacementText } from './markdown-edits.js';
 import { handleRichCodeKeys } from './rich-code-keys.js';
 import { handleRichListKeys } from './rich-list-keys.js';
-import { handleRichParagraphKeys } from './rich-paragraph-keys.js';
+import { handleRichHardBreak, handleRichParagraphKeys } from './rich-paragraph-keys.js';
 import { sourceKeys } from './source-keys.js';
-import { isLocalImage, loadVendorScript, markdownOptions, renderLegacyDiagram, renderPreview, vendorRoot } from './render-document.js';
+import { highlightCode, isLocalImage, loadVendorScript, markdownOptions, renderLegacyDiagram, renderLiveGithubMath, renderPreview, vendorRoot } from './render-document.js';
 import './editor.css';
 
 const nativeCommands = ['bold', 'italic', 'strike', 'inline-code', 'quote', 'list', 'ordered-list', 'check', 'indent', 'outdent', 'undo', 'redo'];
@@ -75,6 +77,31 @@ function sourceExtensions(onUpdate, latest, wrapping) {
 function setLiveTheme(editor, theme) {
   const dark = resolveTheme(theme).scheme === 'dark';
   editor.setTheme(dark ? 'dark' : 'classic', dark ? 'dark' : 'light', dark ? 'github-dark' : 'github');
+}
+
+function bindCodeCopy(_code, menu) {
+  const trigger = menu.querySelector('span[onclick]');
+  const source = menu.querySelector('textarea');
+  if (!trigger || !source) return;
+  trigger.removeAttribute('onclick');
+  trigger.removeAttribute('onmouseover');
+  trigger.setAttribute('role', 'button');
+  trigger.tabIndex = -1;
+  async function copy(event) {
+    event.preventDefault();
+    event.stopPropagation();
+    try {
+      await desktop.writeClipboard({ text: source.value });
+      trigger.setAttribute('aria-label', '已复制');
+    } catch {
+      trigger.setAttribute('aria-label', '复制失败');
+    }
+  }
+  trigger.addEventListener('click', copy);
+  trigger.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter' || event.key === ' ') void copy(event);
+  });
+  trigger.addEventListener('pointerenter', () => trigger.setAttribute('aria-label', '复制'));
 }
 
 function visibleText(editor) {
@@ -178,6 +205,7 @@ function updateUnderlines(root) {
   const ranges = [];
   for (const marker of root.querySelectorAll('[data-type="html-inline"] > code')) {
     const syntax = marker.textContent.trim();
+    if (/^<br\s*\/?\s*>$/i.test(syntax)) marker.parentElement.dataset.sujianBreak = '';
     if (/^<u(?:\s[^>]*)?>$/i.test(syntax)) openings.push(marker.parentElement);
     if (/^<\/u\s*>$/i.test(syntax) && openings.length) {
       const range = document.createRange();
@@ -210,6 +238,7 @@ export function Editor({
   const activeCell = useRef(null);
   const editorContext = useRef(null);
   const contextPointer = useRef(null);
+  const fenceSources = useRef({ raw: null, blocks: [] });
   const [tableSelection, setTableSelection] = useState(null);
   const [activeFence, setActiveFence] = useState(null);
   const [hoveredFence, setHoveredFence] = useState(null);
@@ -231,15 +260,59 @@ export function Editor({
     const before = content.current.rich;
     if (!instance || before === null || latest.current.mode !== 'live' || instance.vditor.ir.composingLock) return;
     const next = instance.getValue();
-    if (next === before) return;
+    const sources = currentFenceSources();
+    const baseline = completeFenceHeaders(before, sources);
+    const after = completeFenceHeaders(next, liveFenceHistorySources(instance.vditor.ir.element, sources));
+    if (next === before && after === baseline) return;
     content.current.rich = next;
-    publish(projectMarkdownEdit(content.current.raw, before, next));
+    publish(projectMarkdownEdit(content.current.raw, baseline, after));
   }
 
   function syncRich(clearHistory = true) {
     if (!rich.current) return;
     rich.current.setValue(content.current.raw, clearHistory);
     content.current.rich = rich.current.getValue();
+    liveFenceHistorySources(rich.current.vditor.ir.element, currentFenceSources());
+  }
+
+  function currentFenceSources() {
+    const { raw } = content.current;
+    if (fenceSources.current.raw !== raw) fenceSources.current = { raw, blocks: structuredFenceSources(raw) };
+    return fenceSources.current.blocks;
+  }
+
+  function editorFenceSource(block) {
+    const editable = rich.current?.vditor.ir.element;
+    return editable ? codeFenceSource(editable, block, currentFenceSources()) : null;
+  }
+
+  function applyCodeFenceLanguage(block, language) {
+    const editable = rich.current?.vditor.ir.element;
+    if (!editable?.contains(block)) return false;
+    commitRich();
+    const source = editorFenceSource(block);
+    if (!source) {
+      if (!changeFenceLanguage(editable, block, language)) return false;
+      commitRich();
+      return true;
+    }
+
+    const next = replaceFenceLanguage(source.value, language);
+    if (next === null) return false;
+    if (next === source.value) {
+      focusCodeFence(editable, block);
+      return true;
+    }
+    const { raw } = content.current;
+    const scrollTop = editable.scrollTop;
+    const engine = rich.current.vditor;
+    engine.undo.addToUndoStack(engine);
+    publish(raw.slice(0, source.from) + next + raw.slice(source.to));
+    syncRich(false);
+    editable.scrollTop = scrollTop;
+    focusCodeFence(editable, editable.querySelectorAll('[data-type="code-block"]')[source.index]);
+    engine.undo.addToUndoStack(engine);
+    return true;
   }
 
   function sourceUpdate(update) {
@@ -375,6 +448,7 @@ export function Editor({
       }
       if (handleRichCodeKeys(event, editable)) return;
       if (handleRichListKeys(event, editable, instance.vditor)) return;
+      if (handleRichHardBreak(event, editable, instance.vditor)) return;
       if (handleRichParagraphKeys(event, editable)) return;
       const addWithEnter = event.key === 'Enter' && !event.shiftKey && !event.altKey &&
         (/Mac/i.test(navigator.platform) ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey);
@@ -452,9 +526,9 @@ export function Editor({
           markdown: markdownOptions,
           render: { media: { enable: false } },
           theme: { current: dark ? 'dark' : 'light' },
-          hljs: { style: dark ? 'github-dark' : 'github' },
+          hljs: { style: dark ? 'github-dark' : 'github', renderMenu: bindCodeCopy },
         },
-        customRenders: ['sequence', 'flow'].map((language) => ({
+        customRenders: ['sequence', 'flow', 'dot'].map((language) => ({
           language,
           render: (preview) => renderLegacyDiagram(preview, latest.current.theme),
         })),
@@ -475,11 +549,14 @@ export function Editor({
           const decorate = () => {
             resolveLiveAssets();
             updateUnderlines(editable);
+            renderLiveGithubMath(editable);
+            for (const preview of normalizeLiveFencePreviews(editable, currentFenceSources())) {
+              void highlightCode(preview, latest.current.theme, true).catch(() => {});
+            }
           };
           observer = new MutationObserver(decorate);
           observer.observe(editable, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['src'] });
-          resolveLiveAssets();
-          updateUnderlines(editable);
+          decorate();
         },
       });
     }).catch((error) => {
@@ -758,19 +835,17 @@ export function Editor({
 
   function handleLink(event) {
     const link = event.target.closest?.('a[href]');
-    if (!link) return;
-    const href = link.getAttribute('href');
+    const href = link?.getAttribute('href') ||
+      ((event.ctrlKey || event.metaKey) && latest.current.mode === 'live' ? linkAddress(event.target) : null);
     if (!href) return;
     event.preventDefault();
-    openHref(href, link.closest('.editor-preview, .editor-live'));
+    openHref(href, event.target.closest('.editor-preview, .editor-live'));
   }
 
   function openHref(href, pane) {
     if (href.startsWith('#')) {
-      const name = href.slice(1);
-      let anchor = name;
-      try { anchor = decodeURIComponent(name); } catch { /* malformed URL */ }
-      pane?.querySelector(`[id="${CSS.escape(anchor)}"], [data-id="${CSS.escape(anchor)}"]`)?.scrollIntoView({ block: 'start' });
+      const contentRoot = pane?.classList.contains('editor-live') ? rich.current?.vditor.ir.element : previewHost.current;
+      scrollToMarkdownAnchor(contentRoot, href.slice(1));
       return;
     }
     latest.current.onLink?.(href);
@@ -818,7 +893,7 @@ export function Editor({
       selection: context.selection, editable: context.editable, mode, kind: context.kind,
       href: context.href, position: context.position,
       canPaste: context.editable && Boolean(desktop.editClipboard || navigator.clipboard?.readText),
-      language: context.editable && context.block ? context.block.querySelector('[data-type="code-block-info"]')?.textContent : undefined,
+      language: context.editable && context.block ? codeFenceLanguage(context.block, editorFenceSource(context.block)) : undefined,
       header: context.cell?.tagName === 'TH', columnCount: context.cell?.parentElement.cells.length,
       spelling: spelling && { word: spelling.word, suggestions: spelling.suggestions },
     });
@@ -905,12 +980,7 @@ export function Editor({
         {mode === 'live' && <CodeLanguageControl key={docId}
           target={hoveredFence?.isConnected ? hoveredFence : activeFence}
           request={languageRequest}
-          onChange={(block, language) => {
-            const editable = rich.current?.vditor.ir.element;
-            if (!editable || !changeFenceLanguage(editable, block, language)) return false;
-            commitRich();
-            return true;
-          }}/>}
+          sourceFor={editorFenceSource} onChange={applyCodeFenceLanguage}/>}
         {tableSelection && <div className="editor-table-toolbar" role="toolbar" aria-label="表格编辑">
           {tableActions.map((entry) => {
             const [action, label] = entry;

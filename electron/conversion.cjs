@@ -7,8 +7,10 @@ const { promisify } = require('node:util');
 const { randomUUID } = require('node:crypto');
 const { pathToFileURL } = require('node:url');
 const { atomicWrite } = require('./documents.cjs');
+const { unwrapGithubMath } = require('../src/editor/github-math.js');
 
 const run = promisify(execFile);
+const markdownReader = 'markdown+tex_math_dollars+yaml_metadata_block+task_lists+mark';
 const exportFormats = {
   html: ['html', 'HTML'], 'html-plain': ['html', 'HTML（无样式）'],
   pdf: ['pdf', 'PDF'], png: ['png', 'PNG'],
@@ -100,20 +102,24 @@ async function revealRoot() {
   }
 }
 
-function diagramFences(text) {
-  const lines = text.split('\n');
-  const diagrams = [];
-  for (let start = 0; start < lines.length; start += 1) {
-    const opening = /^( {0,3})(`{3,}|~{3,})[ \t]*([^ \t]*)/.exec(lines[start]);
-    if (!opening) continue;
-    const [, indent, fence, language] = opening;
-    const closing = new RegExp(`^ {0,3}${fence[0]}{${fence.length},}[ \\t]*$`);
-    let end = start + 1;
-    while (end < lines.length && !closing.test(lines[end])) end += 1;
-    if (['mermaid', 'flow', 'flowchart', 'sequence', 'graphviz'].includes(language)) diagrams.push({ start, end, indent, language });
-    start = end;
+function diagramKey(language, source) {
+  return JSON.stringify([language, source.replace(/\r\n?/g, '\n').trimEnd()]);
+}
+
+function normalizePandocBlocks(node, images) {
+  if (Array.isArray(node)) return node.map((child) => normalizePandocBlocks(child, images));
+  if (node?.t === 'Math' && node.c[0].t === 'InlineMath') {
+    return { ...node, c: [node.c[0], unwrapGithubMath(node.c[1])] };
   }
-  return { lines, diagrams };
+  if (node?.t === 'CodeBlock') {
+    const [attributes, source] = node.c;
+    const [language] = attributes[1];
+    if (language === 'math') return { t: 'Para', c: [{ t: 'Math', c: [{ t: 'DisplayMath' }, source] }] };
+    const image = images.get(diagramKey(language, source));
+    if (image) return { t: 'Para', c: [{ t: 'Image', c: [attributes, [{ t: 'Str', c: language }], [image, '']] }] };
+  }
+  if (node?.c && typeof node.c === 'object') return { ...node, c: normalizePandocBlocks(node.c, images) };
+  return node;
 }
 
 function createConversion({ assets, userDataPath }) {
@@ -179,9 +185,9 @@ function createConversion({ assets, userDataPath }) {
     }
   }
 
-  async function preparePandocText(text, html, temporary, options) {
-    const { lines, diagrams } = diagramFences(text);
-    if (!diagrams.length || !html?.includes('markdown-diagram')) return text;
+  async function preparePandocDiagrams(html, diagrams, temporary, options) {
+    const assets = new Map();
+    if (!diagrams?.length || !html?.includes('markdown-diagram')) return assets;
     const window = new BrowserWindow({ show: false, width: 1100, height: 800,
       webPreferences: { contextIsolation: true, sandbox: true, backgroundThrottling: false },
     });
@@ -228,24 +234,22 @@ function createConversion({ assets, userDataPath }) {
         }
         return results;
       })()`);
-      const replacements = [];
       for (const { ordinal, data } of images) {
         const diagram = diagrams[ordinal];
         if (!diagram || !data) continue;
+        const key = diagramKey(diagram.language, diagram.source);
+        if (assets.has(key)) continue;
         const file = path.join(temporary, `diagram-${ordinal}.png`);
         await fs.writeFile(file, Buffer.from(data, 'base64'));
-        replacements.push({ ...diagram, markdown: `${diagram.indent}![${diagram.language}](<${file.replace(/\\/g, '/')}>)` });
+        assets.set(key, file);
       }
-      for (const replacement of replacements.sort((left, right) => right.start - left.start)) {
-        lines.splice(replacement.start, replacement.end - replacement.start + 1, replacement.markdown);
-      }
-      return lines.join('\n');
+      return assets;
     } finally {
       if (!window.isDestroyed()) window.destroy();
     }
   }
 
-  async function exportDocument(window, { format, html, text, documentPath, defaultName, options = {} }) {
+  async function exportDocument(window, { format, html, text, diagramSources, documentPath, defaultName, options = {} }) {
     const target = exportFormats[format];
     if (!target && format !== 'print') throw new Error('不支持此导出格式。');
     const title = path.parse(defaultName || documentPath || '未命名').name;
@@ -275,16 +279,33 @@ function createConversion({ assets, userDataPath }) {
       await atomicWrite(destination, await printHtml(body, title, format, options));
     } else {
       const temporary = await fs.mkdtemp(path.join(tmpdir(), 'sujian-convert-'));
-      const input = path.join(temporary, 'document.md');
+      let input = path.join(temporary, 'document.md');
       const output = path.join(temporary, `output.${actualExtension}`);
       try {
+        const pandocOptions = { cwd: documentPath ? path.dirname(documentPath) : app.getPath('documents'), executable: options.pandocPath };
+        let reader = markdownReader;
         let source = text ?? '';
-        if (['docx', 'epub'].includes(format)) source = await preparePandocText(source, html, temporary, options);
         const toc = /^(?: {0,3})\[TOC\][ \t]*$/im.test(source);
         if (toc) source = source.replace(/^(?: {0,3})\[TOC\][ \t]*$/gim, '');
         await fs.writeFile(input, source, 'utf8');
+        if (['docx', 'epub'].includes(format)) {
+          const images = await preparePandocDiagrams(html, diagramSources, temporary, options);
+          const mathFence = /(?:`{3,}|~{3,})[ \t]*(?:math\b|\{[^\r\n}]*\.math(?=[ \t}]))/;
+          if (images.size || source.includes('$`') || mathFence.test(source)) {
+            const parsed = path.join(temporary, 'document.json');
+            await usePandoc(['--from', reader, '--to', 'json', '--output', parsed, input], pandocOptions);
+            const document = JSON.parse(await fs.readFile(parsed, 'utf8'));
+            document.blocks = normalizePandocBlocks(document.blocks, images);
+            for (const [key, value] of Object.entries(document.meta)) {
+              document.meta[key] = normalizePandocBlocks(value, images);
+            }
+            await fs.writeFile(parsed, JSON.stringify(document), 'utf8');
+            input = parsed;
+            reader = 'json';
+          }
+        }
         const formatName = format === 'custom' ? options.writer : writer;
-        const args = ['--from', 'markdown+tex_math_dollars+yaml_metadata_block+task_lists+mark', '--standalone'];
+        const args = ['--from', reader, '--standalone'];
         if (formatName) args.push('--to', formatName);
         if (options.referenceDocument && ['docx', 'odt'].includes(format)) args.push('--reference-doc', options.referenceDocument);
         if (options.template) args.push('--template', options.template);
@@ -292,7 +313,7 @@ function createConversion({ assets, userDataPath }) {
         if (format === 'revealjs') args.push('--embed-resources', '--variable', `revealjs-url=${options.revealjsUrl || await revealRoot()}`);
         if (Array.isArray(options.args) && options.args.every((item) => typeof item === 'string')) args.push(...options.args);
         args.push('--output', output, input);
-        await usePandoc(args, { cwd: documentPath ? path.dirname(documentPath) : app.getPath('documents'), executable: options.pandocPath });
+        await usePandoc(args, pandocOptions);
         await atomicWrite(destination, await fs.readFile(output));
       } finally {
         await fs.rm(temporary, { recursive: true, force: true });

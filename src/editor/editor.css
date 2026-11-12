@@ -115,3 +115,5 @@
   .editor-mode-split { flex-direction: column; }
   .editor-mode-split .editor-preview { border-inline-start: 0; border-top: 1px solid var(--border, #e1e3db); }
 }
+.editor-live [data-sujian-break] > code { display: none; }
+.editor-live [data-sujian-break]::after { content: '\a'; white-space: pre; }

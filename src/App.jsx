@@ -267,13 +267,15 @@ export default function App() {
   async function exportFile(format, options) {
     if (!active) return false
     const text = flushEditor() ?? active.text
+    const diagramSources = ['docx', 'epub'].includes(format) ? [] : undefined
     const html = visualExports.has(format) ? await renderDocument(text, {
       title: active.name, styled: format !== 'html-plain', theme: renderTheme, resolveImage: embeddedImage,
       allowRemoteMedia: settings.remoteMedia, print: format === 'pdf' || format === 'print',
       typography: { fontSize: settings.fontSize, lineHeight: settings.lineHeight },
+      diagramSources,
     }) : undefined
     const result = await desktop.exportDocument({
-      format, html, text, documentPath: active.path, defaultName: active.name,
+      format, html, text, diagramSources, documentPath: active.path, defaultName: active.name,
       options: { ...options, imageRoot: settings.imageRoot, css: settings.customCss },
     })
     if (!result) return false

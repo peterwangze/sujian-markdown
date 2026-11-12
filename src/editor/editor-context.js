@@ -123,8 +123,7 @@ export function domContext(event, root, editable, keyboard, snapshot) {
   const block = codeFenceAt(element);
   const code = block?.querySelector(':scope > pre.vditor-ir__marker--pre > code') ?? element?.closest('pre > code');
   const cell = element?.closest('td, th');
-  const href = element?.closest('a[href]')?.getAttribute('href') ||
-    element?.closest('[data-type="a"]')?.querySelector('.vditor-ir__marker--link')?.textContent.replace(/^\u200b/, '').trim();
+  const href = linkAddress(element);
   const anchor = keyboard && range ? range.cloneRange() : null;
   anchor?.collapse(backward);
   return {
@@ -135,6 +134,11 @@ export function domContext(event, root, editable, keyboard, snapshot) {
     kind: code ? 'code' : cell ? 'table' : href ? 'link' : 'text',
     position: keyboard ? anchorRect(anchor, root) : undefined,
   };
+}
+
+export function linkAddress(element) {
+  return element?.closest?.('a[href]')?.getAttribute('href') ||
+    element?.closest?.('[data-type="a"]')?.querySelector(':scope > .vditor-ir__marker--link')?.textContent.replace(/^\u200b/, '').trim();
 }
 
 function applyDomSelection(selection, range, backward) {
