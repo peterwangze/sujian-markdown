@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, readdir, writeFile } from 'node:fs/promises';
+import { access, mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -200,10 +200,10 @@ try {
   await sourceLine('插入图片的位置').click();
   await page.keyboard.press('End');
   await page.keyboard.press(mac ? key('Control+i') : key('Shift+i'));
-  await sourceLine('![图片](').waitFor();
+  await sourceLine('![图片](pixel.png)').waitFor();
   const imageFolder = path.join(working, '快捷键回归.assets');
-  const [imageName] = await readdir(imageFolder);
-  assert.deepEqual(await readFile(path.join(imageFolder, imageName)), image);
+  await assert.rejects(access(imageFolder), { code: 'ENOENT' });
+  assert.deepEqual(await readFile(imageFile), image);
 
   await sourceLine('插入表格的位置').click();
   await page.keyboard.press('End');

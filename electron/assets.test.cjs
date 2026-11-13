@@ -6,6 +6,7 @@ const { test } = require('node:test');
 const { pathToFileURL } = require('node:url');
 const { createAssets } = require('./assets.cjs');
 const { pathKey } = require('./documents.cjs');
+const { createStorage } = require('./storage.cjs');
 
 test('resolves local images consistently with and without a configured image root', async (context) => {
   const directory = await fs.mkdtemp(path.join(tmpdir(), 'sujian-assets-test-'));
@@ -41,4 +42,29 @@ test('resolves local images consistently with and without a configured image roo
   const aliased = createAssets({ userDataPath: aliasedProfile, knownDocuments: new Map() });
   assert.equal(await aliased.mediaFile({ source: pathToFileURL(unattached).href }), await fs.realpath(unattached));
   assert.equal(await aliased.mediaFile({ source: pathToFileURL(local).href }), null);
+});
+
+test('references existing images without creating assets and remembers explicitly pasted draft paths', async (context) => {
+  const directory = await fs.mkdtemp(path.join(tmpdir(), 'sujian-image-reference-'));
+  context.after(() => fs.rm(directory, { recursive: true, force: true }));
+  const profile = path.join(directory, 'profile');
+  const documentPath = path.join(directory, 'notes', 'reference.md');
+  const photo = path.join(directory, '图片 100% #1 (示例).png');
+  const unrelated = path.join(directory, 'other.png');
+  const notImage = path.join(directory, 'other.md');
+  await Promise.all([photo, unrelated, notImage].map(file => fs.writeFile(file, 'fixture')));
+  const options = { userDataPath: profile, knownDocuments: new Map([[pathKey(documentPath), true]]), storage: createStorage(profile) };
+  const assets = createAssets(options);
+  const existing = await assets.referenceImage({ documentPath, sourcePath: photo });
+  assert.match(existing.markdownPath, /^\.\.\//);
+  assert.equal(await assets.mediaFile({ documentPath, source: existing.markdownPath }), await fs.realpath(photo));
+  assert.equal(await assets.referenceImage({ documentPath, sourcePath: notImage }), null);
+  assert.equal(await assets.referenceImage({ documentPath, source: '../missing.png' }), null);
+  await assert.rejects(fs.stat(profile), { code: 'ENOENT' });
+
+  const draft = await assets.referenceImage({ source: pathToFileURL(photo).href });
+  const reopened = createAssets(options);
+  assert.equal(await reopened.mediaFile({ source: draft.markdownPath }), await fs.realpath(photo));
+  assert.equal(await reopened.mediaFile({ source: pathToFileURL(unrelated).href }), null);
+  await assert.rejects(fs.stat(path.join(profile, 'assets')), { code: 'ENOENT' });
 });

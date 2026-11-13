@@ -178,7 +178,13 @@ try {
   await waitForCheck('Auto-save did not update the document on disk', async () => (await readFile(fixture, 'utf8')).includes(change));
   await mockOpenDialog([imageFile]);
   await page.keyboard.press(process.platform === 'darwin' ? 'Meta+Control+i' : 'Control+Shift+i');
-  const copiedImage = /attachments\/(settings-pixel-[\da-f]+\.png)/;
+  await waitForCheck('File selection did not reference the original image', async () => (await readFile(fixture, 'utf8')).includes('![图片](settings-pixel.png)'));
+  await page.locator('.cm-content').evaluate((editor, bytes) => {
+    const transfer = new DataTransfer();
+    transfer.items.add(new File([new Uint8Array(bytes)], 'clipboard.png', { type: 'image/png' }));
+    editor.dispatchEvent(new ClipboardEvent('paste', { clipboardData: transfer, bubbles: true, cancelable: true }));
+  }, [...imageBytes]);
+  const copiedImage = /attachments\/(clipboard-[\da-f]+\.png)/;
   await waitForCheck('The custom image folder was not used', async () => copiedImage.test(await readFile(fixture, 'utf8')));
   const [, imageName] = copiedImage.exec(await readFile(fixture, 'utf8'));
   assert.deepEqual(await readFile(path.join(working, 'attachments', imageName)), imageBytes);

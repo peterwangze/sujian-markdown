@@ -57,11 +57,14 @@ a { color: var(--accent-ink); }
 .tree-root .icon-button { width: 25px; height: 27px; }
 .tree-root .icon-button svg { width: 14px; height: 14px; }
 .tree-row, .outline-row {
+  --tree-indent: calc(var(--indent, 0) * 16px);
   width: 100%; min-width: 0; min-height: 33px; display: flex; align-items: center; gap: 8px;
-  padding: 5px 8px 5px calc(9px + var(--indent, 0) * 16px); text-align: left; color: var(--ink);
+  padding: 5px 8px 5px calc(9px + var(--tree-indent)); text-align: left; color: var(--ink);
 }
+.tree-row[data-level]:not([data-level="0"]) { min-width: calc(86px + var(--tree-indent)); }
 .tree-row > svg, .outline-row svg { flex-shrink: 0; }
 .tree-row > span, .outline-row button:last-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tree-row > .tree-disclosure-space { flex: 0 0 13px; }
 .tree-row.selected, .search-results button.selected { background: var(--selected); }
 .tree-row.selected:hover, .search-results button.selected:hover { background: var(--selected); }
 .sidebar-note { color: var(--muted); margin: 9px; font-size: 12px; overflow-wrap: anywhere; }

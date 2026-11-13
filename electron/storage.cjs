@@ -58,6 +58,12 @@ function createStorage(userDataPath) {
     savePreferences(prefs) {
       return writeJson(preferences, prefs);
     },
+    loadImageReferences() {
+      return readJson(path.join(userDataPath, 'image-references.json'), []);
+    },
+    saveImageReferences(files) {
+      return writeJson(path.join(userDataPath, 'image-references.json'), files);
+    },
   };
 }
 

@@ -385,9 +385,12 @@ function installIpc({ assets, conversion, fonts, storage, operations }) {
   });
   handle('remove-font', (_state, id) => fonts.removeFont(id));
   handle('import-image', ({ window }, options) => assets.importImage(window, options));
+  handle('reference-image', (_state, options) => assets.referenceImage(options));
   handle('resolve-image', (_state, options) => assets.resolveImage(options));
   handle('save-image-as', ({ window }, options) => assets.saveImageAs(window, options, remoteMediaAllowed));
   handle('reveal-image', (_state, source) => assets.revealImage(source));
+  handle('collect-image', ({ window }, options) => assets.collectImage(window, options, remoteMediaAllowed));
+  handle('finish-image-collection', (_state, token, keep) => assets.finishImageCollection(token, keep));
   handle('upload-images', (_state, options) => assets.uploadImages(options));
   handle('import-document', ({ window }, options) => conversion.importDocument(window, options));
   handle('export-document', ({ window }, options) => conversion.exportDocument(window, options));
@@ -460,7 +463,8 @@ function installIpc({ assets, conversion, fonts, storage, operations }) {
 
 async function launch(initialCommand) {
   const userDataPath = app.getPath('userData');
-  const assets = createAssets({ userDataPath, knownDocuments });
+  const storage = createStorage(userDataPath);
+  const assets = createAssets({ userDataPath, knownDocuments, storage });
   const conversion = createConversion({ assets, userDataPath });
   const fonts = createFontStore(userDataPath, {
     origin: `${appScheme}://editor`,
@@ -471,7 +475,6 @@ async function launch(initialCommand) {
   session.defaultSession.webRequest.onBeforeRequest({ urls: ['http://*/*', 'https://*/*'] }, (request, done) => {
     done({ cancel: !remoteMediaAllowed && ['image', 'media'].includes(request.resourceType) });
   });
-  const storage = createStorage(userDataPath);
   const preferences = await storage.loadPreferences().catch(() => ({}));
   session.defaultSession.setSpellCheckerEnabled(preferences?.proseSpellcheck === true);
   remoteMediaAllowed = Boolean(preferences?.remoteMedia);

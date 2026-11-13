@@ -79,8 +79,9 @@ function FileTree({ path, level, expanded, settings, refresh, folderToExpand, ac
         aria-current={active?.path === item.path ? 'true' : undefined}
         onClick={() => directory ? setChildren(previous => ({ ...previous, [item.path]: !open })) : onOpen(item.path).catch(failure => notify(failure.message, true))}
         {...documentContextEvents(item, onContext)}>
-        {directory && (open ? <ChevronDown size={13}/> : <ChevronRight size={13}/>)}
-        {directory ? <Folder size={16}/> : <FileText size={15}/>}<span>{item.name}</span>
+        {directory ? (open ? <ChevronDown size={13}/> : <ChevronRight size={13}/>) :
+          !settings.fileList && <span className="tree-disclosure-space" aria-hidden="true"/>}
+        {directory ? <Folder size={16}/> : <FileText size={16}/>}<span>{item.name}</span>
       </button>
       {directory && open && <FileTree path={item.path} level={level + 1} expanded={open} settings={settings}
         refresh={refresh} folderToExpand={folderToExpand} active={active} onOpen={onOpen} onContext={onContext} notify={notify}/>}
@@ -131,7 +132,7 @@ export function Sidebar({ workspace, sidebar, setSidebar, outline, jump, openFol
         <div className="tree-root">
           <button className="tree-row" data-sidebar-row data-level="0" aria-expanded={rootOpen} onClick={() => setRootOpen(!rootOpen)}
             {...documentContextEvents({ path: settings.workspace, name: pathTail(settings.workspace), kind: 'directory' }, settings.workspace ? onContext : null)}>
-            {rootOpen ? <ChevronDown size={14}/> : <ChevronRight size={14}/>}<FolderOpen size={17}/><span>{pathTail(settings.workspace) || '工作区'}</span>
+            {rootOpen ? <ChevronDown size={13}/> : <ChevronRight size={13}/>}<FolderOpen size={16}/><span>{pathTail(settings.workspace) || '工作区'}</span>
           </button>
           {settings.workspace && <>
             <IconButton icon={List} label={settings.fileList ? '切换文件树' : '切换文件列表'}
@@ -146,7 +147,7 @@ export function Sidebar({ workspace, sidebar, setSidebar, outline, jump, openFol
             data-sidebar-row data-level="1" aria-current={doc.id === active?.id ? 'true' : undefined}
             style={{ '--indent': 1 }} onClick={() => onSelectDocument(doc.id)} title={doc.path || doc.name}
             {...documentContextEvents({ kind: 'file', id: doc.id, path: doc.path, name: doc.name }, onContext)}>
-            <FileText size={15}/><span>{doc.name}</span>
+            <span className="tree-disclosure-space" aria-hidden="true"/><FileText size={16}/><span>{doc.name}</span>
           </button>)}
         {settings.pinned.length > 0 && <section className="sidebar-section">
           <h3>固定文件夹</h3>

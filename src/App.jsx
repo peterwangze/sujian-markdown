@@ -1,6 +1,8 @@
 import { lazy, Suspense, useCallback, useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { FileText, Plus, CircleCheck, AlertTriangle, FolderOpen, ChevronDown, BookOpen } from 'lucide-react'
 import { Editor, renderDocument } from './editor/index.js'
+import { formatMarkdown } from './editor/format.js'
+import { imageAltFromAddress } from './editor/image-paste.js'
 import { IconButton, Modal, TabStrip } from './ui/Controls.jsx'
 import { Sidebar } from './ui/Sidebar.jsx'
 import { Toolbar } from './ui/Toolbar.jsx'
@@ -220,22 +222,41 @@ export default function App() {
     })
   }
 
-  function insertImages(files = []) {
+  function insertImages(transfer, insert) {
     return run(async () => {
       if (!active) return
       const selectedDoc = active
-      const inputs = files.length ? files : [null]
-      for (const file of inputs) {
-        const item = await desktop.importImage({
-          documentPath: selectedDoc.path || undefined, assetFolder: settings.imageFolder || undefined,
-          ...(file ? { bytes: new Uint8Array(await file.arrayBuffer()), filename: file.name } : {}),
-        })
-        if (!item) continue
-        const alt = file?.name?.replace(/\.[^.]+$/, '') ?? '图片'
-        if (selectedDoc.id === activeId.current) editor.current?.command('image', { src: item.markdownPath, alt })
-        else amend(selectedDoc.id, doc => ({ text: doc.text + '\n\n![' + alt.replace(/[[\]]/g, '') + '](' + item.markdownPath + ')\n' }))
+      const documentPath = selectedDoc.path || undefined
+      const imageOptions = { documentPath, assetFolder: settings.imageFolder || undefined }
+      const pictures = []
+      let wroteAsset = false
+      for (const { file, source, sourcePath, alt } of transfer?.items ?? [{}]) {
+        let item
+        if (source && /^https?:\/\//i.test(source)) {
+          item = { markdownPath: source, alt: imageAltFromAddress(source) }
+        } else if (source || sourcePath) {
+          item = await desktop.referenceImage?.({ documentPath, source, sourcePath, rootPath: settings.imageRoot })
+        } else if (!transfer) {
+          item = await desktop.importImage(imageOptions)
+        }
+        if (!item && file) {
+          item = await desktop.importImage({ ...imageOptions, bytes: new Uint8Array(await file.arrayBuffer()), filename: file.name, mime: file.type })
+          wroteAsset ||= Boolean(item)
+        }
+        if (item) {
+          const label = alt ?? (transfer ? item.alt ?? file?.name?.replace(/\.[^.]+$/, '') : null) ?? '图片'
+          pictures.push(formatMarkdown('image', { src: item.markdownPath, alt: label }, '').text)
+        }
       }
-      setRefresh(previous => previous + 1)
+      const text = pictures.join('\n') || transfer?.plain
+      if (!text) return
+      if (selectedDoc.id === activeId.current && (insert ? insert(text, pictures.length === 0) : editor.current?.command('insert', text))) {
+        if (wroteAsset) setRefresh(previous => previous + 1)
+      } else if (workspace.getDocument(selectedDoc.id)) {
+        amend(selectedDoc.id, doc => ({ text: doc.text + '\n\n' + text + '\n' }))
+        if (wroteAsset) setRefresh(previous => previous + 1)
+        notify('已将粘贴内容放到原文档末尾')
+      }
     })
   }
 
@@ -534,7 +555,7 @@ export default function App() {
     const documentActions = [['review', '审阅修订稿']]
     if (contextDoc?.reviewUndo && contextDoc.text === contextDoc.reviewUndo.after) documentActions.push(['undo-review', '撤销本次审阅'])
     if (item.kind === 'editor') {
-      const { editable, selection, kind, href, canCopyImage, canSaveImage, canRevealImage, canPaste, language, header, columnCount, spelling } = item.detail
+      const { editable, selection, kind, href, canCopyImage, canSaveImage, canRevealImage, canCollectImage, canPaste, language, header, columnCount, spelling } = item.detail
       const spellingActions = spelling ? [
         ...spelling.suggestions.slice(0, 5).map((word, index) => ['spelling-' + index, word]),
         ['add-to-dictionary', '添加到词典'],
@@ -543,6 +564,7 @@ export default function App() {
       if (canCopyImage) imageActions.push(['copy-image', '复制图片'])
       if (canSaveImage) imageActions.push(['save-image-as', '图片另存为…'])
       if (canRevealImage) imageActions.push(['reveal-image', '在文件夹中显示'])
+      if (canCollectImage) imageActions.push(['collect-image', '复制到文档资源目录'])
       const blockActions = []
       if (kind === 'code') {
         blockActions.push(['copy-code', '复制代码'])
@@ -599,6 +621,15 @@ export default function App() {
         run(async () => {
           const saved = await editor.current?.contextCommand(key)
           if (saved) notify('图片已保存 · ' + leaf(saved))
+        })
+      } else if (key === 'collect-image') {
+        run(async () => {
+          const result = await editor.current?.contextCommand(key)
+          if (result === 'already') notify('图片已在文档资源目录中')
+          if (result === 'copied' || result === 'linked') {
+            setRefresh(previous => previous + 1)
+            notify(result === 'copied' ? '已复制图片并更新引用' : '已更新文档资源引用')
+          }
         })
       } else run(() => editor.current?.contextCommand(key))
       return
@@ -681,6 +712,7 @@ export default function App() {
               onChange={text => amend(active.id, { text })} onSelection={setSelection} onLink={followLink} onImage={insertImages}
               onContextMenu={openEditorContext}
               assetUrl={assetUrl} resolveImage={resolveImage} embedImage={embeddedImage} theme={renderTheme}
+              documentPath={active.path} imageFolder={settings.imageFolder}
               wrap={settings.wrap} allowRemoteMedia={settings.remoteMedia}
               focusMode={settings.focusMode} typewriter={settings.typewriter} spellcheck={settings.proseSpellcheck}/>
           </div>

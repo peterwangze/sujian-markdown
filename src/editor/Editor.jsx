@@ -2,7 +2,7 @@ import { useEffect, useImperativeHandle, useLayoutEffect, useRef, useState } fro
 import { Annotation, Compartment, EditorSelection, EditorState, Transaction } from '@codemirror/state';
 import { EditorView, drawSelection, dropCursor, highlightActiveLine, keymap } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap, redo, undo } from '@codemirror/commands';
-import { HighlightStyle, syntaxHighlighting } from '@codemirror/language';
+import { HighlightStyle, syntaxHighlighting, syntaxTree } from '@codemirror/language';
 import { markdown } from '@codemirror/lang-markdown';
 import { tags } from '@lezer/highlight';
 import Vditor from 'vditor';
@@ -10,6 +10,7 @@ import 'vditor/dist/index.css';
 import { resolveTheme } from '../theme/themes.js';
 import { isComposingKey } from '../workspace/commands.js';
 import { desktop } from '../workspace/desktop.js';
+import { displayedImageKey, findImageReference, imageReferenceReplacement, imageSourceKey } from '../workspace/image-reference.js';
 import { changeFenceLanguage, CodeLanguageControl, codeFenceAt, codeFenceLanguage, codeFenceSource, focusCodeFence, liveFenceHistorySources, normalizeLiveFencePreviews } from './CodeLanguageControl.jsx';
 import { contextSelection, domContext, linkAddress, restoreEditorContext, sourceContext, sourceSpellingAt, spellingAt } from './editor-context.js';
 import { completeFenceHeaders, replaceFenceLanguage, structuredFenceSources } from './fence-info.js';
@@ -17,6 +18,7 @@ import { formatMarkdown } from './format.js';
 import { createLiveHtmlDetails } from './live-html-details.js';
 import { decorateLiveInlineHtml } from './live-html-inline.js';
 import { decorateLiveSpellcheck } from './live-spellcheck.js';
+import { imageTransfer } from './image-paste.js';
 import { formatLiveSelection } from './live-inline-format.js';
 import { openEnclosingDetails, scrollToMarkdownAnchor } from './markdown-anchors.js';
 import { matchMarkdown, projectMarkdownEdit, replacementText } from './markdown-edits.js';
@@ -239,12 +241,13 @@ function ensureLinkCaret(root, remembered) {
 export function Editor({
   docId, value = '', mode = 'live', onChange, onSelection, onLink, onImage, resolveImage, embedImage,
   assetUrl, focusMode = false, typewriter = false, spellcheck = false, wrap = true, allowRemoteMedia = true, theme = 'light', editorRef,
-  onContextMenu,
+  onContextMenu, documentPath, imageFolder,
 }) {
   const richHost = useRef(null);
   const liveDetails = useRef(null);
   const sourceHost = useRef(null);
   const previewHost = useRef(null);
+  const renderedPreview = useRef(null);
   const rich = useRef(null);
   const pendingLiveFocus = useRef(null);
   const source = useRef(null);
@@ -260,6 +263,7 @@ export function Editor({
   const activeCell = useRef(null);
   const editorContext = useRef(null);
   const contextPointer = useRef(null);
+  const plainPasteUntil = useRef(0);
   const fenceSources = useRef({ raw: null, blocks: [] });
   const [tableSelection, setTableSelection] = useState(null);
   const [activeFence, setActiveFence] = useState(null);
@@ -269,7 +273,7 @@ export function Editor({
   const [richError, setRichError] = useState('');
   const [previewError, setPreviewError] = useState('');
 
-  latest.current = { mode, onChange, onSelection, onLink, onImage, resolveImage, assetUrl, spellcheck, theme, typewriter, wrap };
+  latest.current = { mode, documentPath, onChange, onSelection, onLink, onImage, resolveImage, assetUrl, spellcheck, theme, typewriter, wrap };
 
   function publish(next) {
     if (next === content.current.raw) return;
@@ -751,6 +755,7 @@ export function Editor({
         if (!alive) return;
         setPreviewError('');
         preview.replaceChildren(article);
+        renderedPreview.current = { docId, value };
         tables = observeWideTables(article);
       }).catch((error) => {
         if (alive) setPreviewError(error.message);
@@ -1000,18 +1005,20 @@ export function Editor({
     const imageTarget = !keyboard && desktop.copyImageAt && target.root?.contains(image) && image.complete && image.naturalWidth
       ? { element: image, source: image.currentSrc, alt: image.alt, x: event.clientX, y: event.clientY } : null;
     const localImage = imageTarget?.source.startsWith('sujian-asset://local/');
+    const remoteImage = allowRemoteMedia && /^https?:\/\//i.test(imageTarget?.source ?? '');
+    const collection = (localImage || remoteImage) && documentPath && desktop.collectImage ? imageCollectionTarget(context, imageTarget) : null;
     const canCheckSpelling = spellcheck && context.editable && !context.selection && !imageTarget && context.kind !== 'code';
     const spelling = canCheckSpelling ? (context.view
       ? sourceSpellingAt(context.view.state, context.sourceOffset, desktop.spellingSuggestions)
       : spellingAt(context.root, context.range, desktop.spellingSuggestions)) : null;
-    editorContext.current = { ...context, mode, docId, spelling, imageTarget };
+    editorContext.current = { ...context, mode, docId, spelling, imageTarget, collection };
     onContextMenu(event, {
       selection: context.selection, editable: context.editable, mode, kind: context.kind,
       href: context.href, position: context.position,
       canCopyImage: Boolean(imageTarget),
-      canSaveImage: Boolean(imageTarget && desktop.saveImageAs && (localImage || /^data:image\//i.test(imageTarget.source) ||
-        (allowRemoteMedia && /^https?:\/\//i.test(imageTarget.source)))),
+      canSaveImage: Boolean(imageTarget && desktop.saveImageAs && (localImage || remoteImage || /^data:image\//i.test(imageTarget.source))),
       canRevealImage: Boolean(localImage && desktop.revealImage),
+      canCollectImage: Boolean(collection),
       canPaste: context.editable && Boolean(desktop.editClipboard || navigator.clipboard?.readText),
       language: context.editable && context.block ? codeFenceLanguage(context.block, editorFenceSource(context.block)) : undefined,
       header: context.cell?.tagName === 'TH', columnCount: context.cell?.parentElement.cells.length,
@@ -1023,6 +1030,7 @@ export function Editor({
     const context = editorContext.current;
     if (!context || context.docId !== content.current.id || context.mode !== latest.current.mode) return false;
     if (id === 'copy-image' && context.imageTarget) return copyContextImage(context);
+    if (id === 'collect-image' && context.collection) return collectContextImage(context);
     if (id === 'save-image-as' || id === 'reveal-image') {
       const { element, source, alt } = context.imageTarget ?? {};
       if (!element || !context.root.contains(element) || element.currentSrc !== source) {
@@ -1067,12 +1075,66 @@ export function Editor({
     if (tableContextActions[id] && context.cell?.isConnected) return tableCommand(tableContextActions[id], context.cell);
     if (['bold', 'italic', 'strike', 'inline-code', 'underline', 'link', 'table', 'code', 'undo', 'redo'].includes(id)) return command(id, payload);
     if (!Object.hasOwn(pasteActions, id)) return false;
-    if (desktop.editClipboard) return desktop.editClipboard(pasteActions[id]);
+    if (desktop.editClipboard) {
+      if (id === 'paste-plain') plainPasteUntil.current = performance.now() + 1000;
+      return desktop.editClipboard(pasteActions[id]);
+    }
     return navigator.clipboard.readText().then(text => {
       if (context.docId === content.current.id && context.mode === latest.current.mode && restoreEditorContext(context)) {
         document.execCommand('insertText', false, text);
       }
     });
+  }
+
+  function imageCollectionTarget(context, { source, element }) {
+    if (mode === 'live') commitRich();
+    const { raw } = content.current;
+    if (mode !== 'live' && (renderedPreview.current?.docId !== docId || renderedPreview.current.value !== raw)) return null;
+    const key = displayedImageKey(source);
+    if (!key) return null;
+    const matches = Array.from(context.root.querySelectorAll('img')).filter(image =>
+      (displayedImageKey(image.currentSrc || image.getAttribute('src')) ??
+        (mode === 'live' && imageSourceKey(image.getAttribute('src') ?? ''))) === key);
+    const reference = findImageReference(raw, key, matches.indexOf(element), matches.length);
+    return reference && { raw, reference, documentPath, imageFolder };
+  }
+
+  async function collectContextImage(context) {
+    const { raw, reference, documentPath, imageFolder } = context.collection;
+    const { source: address, element, alt } = context.imageTarget;
+    if (!context.root.contains(element) || element.currentSrc !== address) throw new Error('图片已发生变化，请重新右击图片。');
+    const result = await desktop.collectImage({ documentPath, source: address, alt, assetFolder: imageFolder });
+    let keep = false;
+    try {
+      commitRich();
+      if (content.current.id !== context.docId || latest.current.mode !== context.mode ||
+          latest.current.documentPath !== documentPath || content.current.raw !== raw) {
+        throw new Error('文档已发生变化，请重新右击图片。');
+      }
+      const replacement = imageReferenceReplacement(reference, result.markdownPath);
+      if (replacement === raw.slice(reference.from, reference.to)) return 'already';
+      if (context.mode === 'live') {
+        const engine = rich.current.vditor;
+        const editable = engine.ir.element;
+        const scrollTop = editable.scrollTop;
+        engine.undo.addToUndoStack(engine);
+        publish(raw.slice(0, reference.from) + replacement + raw.slice(reference.to));
+        syncRich(false);
+        editable.scrollTop = scrollTop;
+        engine.undo.addToUndoStack(engine);
+      } else {
+        const view = source.current;
+        view.dispatch({
+          changes: { from: sourceText(raw.slice(0, reference.from)).length, to: sourceText(raw.slice(0, reference.to)).length,
+            insert: sourceText(replacement) },
+          userEvent: 'input',
+        });
+      }
+      keep = true;
+      return result.token ? 'copied' : 'linked';
+    } finally {
+      if (result.token) await desktop.finishImageCollection(result.token, keep);
+    }
   }
 
   async function copyContextImage(context) {
@@ -1130,11 +1192,42 @@ export function Editor({
   }
 
   function handleFiles(event) {
-    const files = [...(event.clipboardData?.files ?? event.dataTransfer?.files ?? [])].filter((file) => file.type.startsWith('image/'));
-    if (!files.length || !latest.current.onImage) return;
+    const target = editorContextTarget(event.target);
+    if ((!target?.view && !target?.editable) || !latest.current.onImage ||
+        event.target.closest?.('input, textarea, [contenteditable="false"]')) return;
+    const paste = event.type === 'paste';
+    if (paste && plainPasteUntil.current > performance.now()) {
+      plainPasteUntil.current = 0;
+      return;
+    }
+    const snapshot = contextSelection(target);
+    const node = snapshot.range?.startContainer;
+    const liveElement = node?.nodeType === Node.ELEMENT_NODE ? node : node?.parentElement;
+    let inCode = Boolean(liveElement?.closest('code, pre'));
+    if (target.view) {
+      const { state } = target.view;
+      for (let node = syntaxTree(state).resolveInner(state.selection.main.head, -1); node; node = node.parent) {
+        if (['InlineCode', 'FencedCode', 'CodeBlock'].includes(node.name)) { inCode = true; break; }
+      }
+    }
+    const transfer = imageTransfer(event.clipboardData ?? event.dataTransfer, desktop.filePath, { allowAddress: !inCode });
+    if (!transfer) return;
+    const atSelection = paste || !event.clientX && !event.clientY;
+    const context = target.view ? sourceContext(event, target.view, atSelection, snapshot) :
+      domContext(event, target.root, true, atSelection, snapshot);
     event.preventDefault();
     event.stopPropagation();
-    latest.current.onImage(files);
+    const documentId = content.current.id;
+    const startMode = latest.current.mode;
+    latest.current.onImage(transfer, (text, plain) => {
+      if (content.current.id !== documentId || latest.current.mode !== startMode || !restoreEditorContext(context)) return false;
+      if (plain && !target.view) {
+        const inserted = document.execCommand('insertText', false, text);
+        if (inserted) commitRich();
+        return inserted;
+      }
+      return command('insert', text);
+    });
   }
 
   return (

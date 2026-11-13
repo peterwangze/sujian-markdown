@@ -6,7 +6,7 @@
 
 <p align="center"><strong>写作时看见排版，改稿时看清变化。</strong></p>
 <p align="center">给长文、技术文档和改稿用的本地 Markdown 编辑器。边写边看排版，用键盘找到文件和命令，再把确认过的改动交付出去。</p>
-<p align="center"><a href="https://github.com/peterwangze/sujian-markdown/releases/tag/v1.4.9"><strong>下载 v1.4.9 离线安装包</strong></a> · Windows / macOS / Linux</p>
+<p align="center"><a href="https://github.com/peterwangze/sujian-markdown/releases/tag/v1.4.10"><strong>下载 v1.4.10 离线安装包</strong></a> · Windows / macOS / Linux</p>
 
 ## 用顺手的方式写作
 
@@ -16,9 +16,12 @@
 - **长文和代码用各自合适的字。** 在 **设置 → 字体** 分别选正文与标题、源码与代码、菜单与界面的字体。调整字号、行距时可就地看样张。内置 Inter、Source Serif 4、JetBrains Mono、Noto Sans SC 和 Noto Serif SC，断网也能用，均随应用附带 SIL Open Font License。在同一页可导入 TTF、OTF、WOFF 或 WOFF2，字体保存在本机的素笺字体库，供本机编辑与阅读使用。
 - **手留在键盘上，写完一段再切文档。** 在即时、源码或分栏编辑区按 `Ctrl/⌘+1` 到 `6` 设置标题，按 `Ctrl/⌘+0` 转回正文。用 `Ctrl/⌘+B` 加粗、`Ctrl/⌘+K` 插入链接、`Ctrl/⌘+P` 按文件名定位，或用 `Ctrl+Tab` 切到下一份文档。在 **设置 → 快捷键** 搜索命令，按下自己的组合键即可录入。遇到冲突会显示占用的命令，每个命令都可恢复默认。[分场景快捷键清单](docs/shortcut-acceptance.md)
 - **少一次伸手拿鼠标。** 文件侧栏可用方向键在条目间移动、展开和折叠目录。工具菜单支持方向键选择和 `Esc` 返回。在标签栏用 `Delete` 关闭文件后，可以接着用方向键操作剩余标签。
+- **一眼看出文档在哪一层。** 文件树中同层的文件和文件夹共用对齐起点，子项逐层向右缩进。窄侧栏也可以滚动查看深层文件名。
 - **写清单时直接输入列表标记。** 在即时编辑的段首键入 `*`、`-` 或 `+`，按空格即可开始无序列表。用 `Tab` 缩进，用 `Shift+Tab` 提升嵌套项，可一次移动同级选中的多项。一级空项按 `Enter` 退出。表格可前后移格，末格按 `Tab` 接着填新行。先按 `Esc` 再按 `Tab` 或 `Shift+Tab` 可移出编辑区。[编辑按键行为](docs/usability.md#正文编辑按键)
 
 <img src="docs/images/sujian-shortcuts.png" alt="素笺快捷键设置正在录制一级标题的组合键，并指出它与二级标题冲突。" width="650">
+
+<img src="docs/images/sujian-sidebar-tree.png" alt="素笺文件树中，同层文件与文件夹对齐，深层子项逐层向右缩进。" width="230">
 
 ## 在要操作的地方右击
 
@@ -38,7 +41,7 @@
 
 ![在素笺代码块右下角打开语言选择器，输入 ja 后列出 JavaScript 和 Java。](docs/images/sujian-code-language.png)
 
-<img src="docs/images/sujian-image-context.png" alt="即时编辑中右击带链接的图片。菜单顶部是复制图片、图片另存为、在文件夹中显示，随后是链接操作。" width="460">
+<img src="docs/images/sujian-image-context.png" alt="即时编辑中的图片菜单，显示复制图片、图片另存为、在文件夹中显示、复制到文档资源目录。" width="460">
 
 ## 写技术文档、审改稿、交付定稿
 
@@ -69,7 +72,8 @@ AI 生成由你选择的外部工具完成。素笺在本机进行审阅、比�
 - **需要时再校对正文。** 正文拼写检查默认关闭。可在 **设置 → 编辑 → 正文拼写检查** 开启，右击错词可查看替换建议。即时、源码和分栏编辑均会跳过代码、公式、链接地址和常见技术标识符。
 - **把多份文档放在手边。** 用标签页切换文件，从大纲跳到章节，在工作区里跨文件搜索。长文档自动进入源码模式，便于滚动和查找。
 - **保住正在写的内容。** 重启后可以从侧栏恢复未保存的草稿。磁盘文件有外部改动时，可以对照磁盘版本，并把正在编辑的内容另存成副本。
-- **让笔记和插图一起移动。** 导入或粘贴本地图片时，素笺默认将图片复制到已保存文档旁的 `文档名.assets`，在 Markdown 中写入相对路径。新建和保存纯文字笔记只写入文档文件。
+- **直接引用已有插图。** 从文件管理器复制、拖入或选取图片时，素笺引用原文件，能用相对路径时就写相对路径。粘贴时也会优先采用剪贴板提供的有效图片地址。只有截图等缺少可用地址的图像数据需要落盘，已保存文档默认写入 `文档名.assets`，也可在 **设置 → 文件与资源** 指定目录。
+- **交付 Markdown 前收拢插图。** 保存文档后，右击其他目录里的图片或已加载的网络图片，选 **复制到文档资源目录**，再保存文档。素笺复制图像并更新本次点击的引用。交付时把文档和资源目录一起发送。
 - **发出带图的成品，收件人可以直接打开。** PDF、HTML、PNG、Word、ODT、RTF、EPUB 和 Reveal.js 导出会带上可读取的本地图片。相对路径、绝对路径、`file://` 和设置中的图片根路径都可用于找图，图片缺失时会提示。导出 Markdown 时保留原有链接，交付源码时请同时提供引用的资源。
 - **断网也能导出成品。** 本地公式、Mermaid、Flowchart.js 和 Graphviz 图表可离线渲染。包含 GitHub 行内公式和引用、清单内图表的文档可导出为 PDF、HTML、Word 或 EPUB。安装包内置 Pandoc，也支持 PNG 长图和 Reveal.js 幻灯片等格式。
 
@@ -90,15 +94,15 @@ Windows 使用安装目录中的 `Sujian.exe`。macOS 使用 `/Applications/Suji
 
 | 系统 | x64 / Intel | ARM64 / Apple 芯片 |
 | --- | --- | --- |
-| Windows | [EXE](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.9/Sujian-1.4.9-win-x64.exe) | [EXE](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.9/Sujian-1.4.9-win-arm64.exe) |
-| macOS 13+ | [DMG](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.9/Sujian-1.4.9-mac-x64.dmg) | [DMG](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.9/Sujian-1.4.9-mac-arm64.dmg) |
-| Linux | [AppImage](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.9/Sujian-1.4.9-linux-x86_64.AppImage) · [DEB](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.9/Sujian-1.4.9-linux-amd64.deb) | [AppImage](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.9/Sujian-1.4.9-linux-arm64.AppImage) · [DEB](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.9/Sujian-1.4.9-linux-arm64.deb) |
+| Windows | [EXE](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.10/Sujian-1.4.10-win-x64.exe) | [EXE](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.10/Sujian-1.4.10-win-arm64.exe) |
+| macOS 13+ | [DMG](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.10/Sujian-1.4.10-mac-x64.dmg) | [DMG](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.10/Sujian-1.4.10-mac-arm64.dmg) |
+| Linux | [AppImage](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.10/Sujian-1.4.10-linux-x86_64.AppImage) · [DEB](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.10/Sujian-1.4.10-linux-amd64.deb) | [AppImage](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.10/Sujian-1.4.10-linux-arm64.AppImage) · [DEB](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.10/Sujian-1.4.10-linux-arm64.deb) |
 
 - **Windows** 双击 EXE 安装。安装包未做 Authenticode 签名。ARM64 版的 Pandoc 使用 Windows 11 的 x64 仿真。
 - **macOS** 挂载 DMG 后，将素笺拖到“应用程序”。此版本采用临时签名，首次启动时可能需要在“隐私与安全性”中允许打开。[Apple 打开应用说明](https://support.apple.com/en-us/102445)
 - **Linux** 赋予 AppImage 执行权限后打开，或通过软件包管理器安装 DEB。运行依赖发行版提供的 Chromium 系统库。
 
-安装包包含应用运行时、渲染资源、字体与 Pandoc。六种系统与架构组合均通过成品启动检查。[SHA-256 清单](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.9/SHA256SUMS.txt) · [构建与验证记录](https://github.com/peterwangze/sujian-markdown/actions/workflows/release.yml)
+安装包包含应用运行时、渲染资源、字体与 Pandoc。六种系统与架构组合均通过成品启动检查。[SHA-256 清单](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.10/SHA256SUMS.txt) · [构建与验证记录](https://github.com/peterwangze/sujian-markdown/actions/workflows/release.yml)
 
 ## 开发与兼容范围
 

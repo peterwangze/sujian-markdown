@@ -51,17 +51,32 @@ async function remoteImageResponse(window, source) {
 async function imageBytes(response) {
   if (!response.body || Number(response.headers.get('content-length')) > maxDownloadBytes) {
     await response.body?.cancel();
-    throw new Error('无法另存图片：图片为空或超过 64 MB。');
+    throw new Error('图片为空或超过 64 MB。');
   }
   const chunks = [];
   let size = 0;
   for await (const chunk of response.body) {
     size += chunk.byteLength;
-    if (size > maxDownloadBytes) throw new Error('无法另存图片：图片超过 64 MB。');
+    if (size > maxDownloadBytes) throw new Error('图片超过 64 MB。');
     chunks.push(chunk);
   }
-  if (!size) throw new Error('无法另存图片：图片为空。');
+  if (!size) throw new Error('图片为空。');
   return Buffer.concat(chunks, size);
+}
+
+async function imagePayload({ response, url }, alt) {
+  const type = response.headers.get('content-type')?.split(';')[0].trim().toLowerCase();
+  const mime = imageTypeAliases.get(type) ?? type;
+  if (!response.ok || !imageExtensions.has(mime)) {
+    await response.body?.cancel();
+    throw new Error('图片资源不可用或格式不受支持。');
+  }
+  let name = typeof alt === 'string' ? alt : '';
+  if (url) {
+    const leaf = url.pathname.split('/').at(-1);
+    try { name = decodeURIComponent(leaf) || name; } catch { name = leaf || name; }
+  }
+  return { bytes: await imageBytes(response), filename: imageFilename(name, mime) };
 }
 
 function assetUrl({ documentPath, source, rootPath }) {
@@ -84,8 +99,26 @@ function encodeMarkdownPath(filePath) {
   }).join('/');
 }
 
-function createAssets({ userDataPath, knownDocuments }) {
+function referencePath(documentPath, file) {
+  const relative = documentPath && path.relative(path.dirname(documentPath), file);
+  if (!relative || path.isAbsolute(relative)) return pathToFileURL(file).href.replace(/[()]/g, character => '%' + character.charCodeAt(0).toString(16));
+  return encodeMarkdownPath(relative);
+}
+
+function createAssets({ userDataPath, knownDocuments, storage }) {
   const unattached = path.join(userDataPath, 'assets');
+  const pendingCollections = new Map();
+  const approvedImages = new Set();
+  let approvals;
+  async function loadApprovals() {
+    approvals ??= (async () => {
+      const paths = await storage?.loadImageReferences().catch(() => []);
+      if (Array.isArray(paths)) {
+        for (const file of paths) if (typeof file === 'string' && path.isAbsolute(file)) approvedImages.add(pathKey(file));
+      }
+    })();
+    return approvals;
+  }
 
   async function mediaFile({ documentPath, source, rootPath }) {
     if (typeof source !== 'string' || !source.trim() || safeMediaSource(source)) return null;
@@ -108,11 +141,12 @@ function createAssets({ userDataPath, knownDocuments }) {
     const candidates = rootRelative ? [path.resolve(root, decoded.slice(1)), path.resolve(base, decoded)] :
       [path.resolve(base, decoded), ...(root && !path.isAbsolute(decoded) ? [path.resolve(root, decoded)] : [])];
     const allowedBase = !documentPath && await fs.realpath(unattached).catch(() => null);
-    if (!documentPath && !allowedBase) return null;
+    if (!documentPath && path.isAbsolute(decoded)) await loadApprovals();
     for (const candidate of new Set(candidates)) {
       const absolute = await fs.realpath(candidate).catch(() => null);
       if (!absolute || !types.has(path.extname(absolute).toLowerCase())) continue;
-      if (allowedBase) {
+      if (!documentPath && !approvedImages.has(pathKey(absolute))) {
+        if (!allowedBase) continue;
         const relative = path.relative(allowedBase, absolute);
         if (relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) continue;
       }
@@ -155,6 +189,46 @@ function createAssets({ userDataPath, knownDocuments }) {
     shell.showItemInFolder(await localImageFile(source));
   }
 
+  async function collectImage(window, { documentPath, source, alt, assetFolder } = {}, allowRemote = false) {
+    if (typeof documentPath !== 'string' || !knownDocuments.has(pathKey(documentPath))) {
+      throw new Error('请先保存文档，再复制图片到文档资源目录。');
+    }
+    const parent = path.dirname(documentPath);
+    const folder = typeof assetFolder === 'string' && assetFolder || path.parse(documentPath).name + '.assets';
+    const directory = path.resolve(parent, folder);
+    let local, bytes, filename;
+    if (/^https?:\/\//i.test(source)) {
+      if (!allowRemote) throw new Error('请先在设置中开启「显示网络图片」。');
+      ({ bytes, filename } = await imagePayload(await remoteImageResponse(window, source), alt));
+    } else {
+      local = await localImageFile(source);
+      filename = path.basename(local);
+      const realDirectory = await fs.realpath(directory).catch(() => directory);
+      const inside = path.relative(realDirectory, local);
+      if (inside && inside !== '..' && !inside.startsWith('..' + path.sep) && !path.isAbsolute(inside)) {
+        return { markdownPath: referencePath(documentPath, path.join(directory, inside)) };
+      }
+    }
+
+    const extension = path.extname(filename);
+    const stem = path.basename(filename, extension).replace(/[<>:"/\\|?*\x00-\x1f]/g, '-').slice(0, 80);
+    await fs.mkdir(directory, { recursive: true });
+    const destination = path.join(directory, `${stem}-${randomUUID().slice(0, 8)}${extension}`);
+    if (local) await fs.copyFile(local, destination, COPYFILE_EXCL);
+    else await fs.writeFile(destination, bytes, { flag: 'wx' });
+    const token = randomUUID();
+    pendingCollections.set(token, destination);
+    setTimeout(() => pendingCollections.delete(token), 60_000).unref();
+    return { markdownPath: referencePath(documentPath, destination), token };
+  }
+
+  async function finishImageCollection(token, keep) {
+    const destination = pendingCollections.get(token);
+    if (!destination) return;
+    pendingCollections.delete(token);
+    if (!keep) await fs.rm(destination, { force: true });
+  }
+
   async function saveImageAs(window, { source, alt } = {}, allowRemote = false) {
     if (typeof source !== 'string') throw new Error('无法识别图片来源。');
     let local, bytes, filename;
@@ -165,20 +239,8 @@ function createAssets({ userDataPath, knownDocuments }) {
       const remote = /^https?:\/\//i.test(source);
       if (remote && !allowRemote) throw new Error('请先在设置中开启「显示网络图片」。');
       if (!remote && !/^data:image\//i.test(source)) throw new Error('无法识别图片来源。');
-      const { response, url } = remote ? await remoteImageResponse(window, source) : { response: await fetch(source) };
-      const type = response.headers.get('content-type')?.split(';')[0].trim().toLowerCase();
-      const mime = imageTypeAliases.get(type) ?? type;
-      if (!response.ok || !imageExtensions.has(mime)) {
-        await response.body?.cancel();
-        throw new Error('无法另存图片：资源不可用或图片格式不受支持。');
-      }
-      let name = typeof alt === 'string' ? alt : '';
-      if (url) {
-        const leaf = url.pathname.split('/').at(-1);
-        try { name = decodeURIComponent(leaf) || name; } catch { name = leaf || name; }
-      }
-      filename = imageFilename(name, mime);
-      bytes = await imageBytes(response);
+      const response = remote ? await remoteImageResponse(window, source) : { response: await fetch(source) };
+      ({ bytes, filename } = await imagePayload(response, alt));
     }
 
     const extension = path.extname(filename);
@@ -221,16 +283,54 @@ function createAssets({ userDataPath, knownDocuments }) {
     return net.fetch(pathToFileURL(source).href, { method: request.method, headers: range ? { Range: range } : {} });
   }
 
-  async function importImage(window, { documentPath, bytes, filename, sourcePath, useClipboard = false, assetFolder } = {}) {
+  async function referenceImage({ documentPath, source, sourcePath, rootPath } = {}) {
+    if (documentPath && !knownDocuments.has(pathKey(documentPath))) return null;
+    let file;
+    if (typeof sourcePath === 'string' && path.isAbsolute(sourcePath)) {
+      file = await fs.realpath(sourcePath).catch(() => null);
+    } else if (typeof source === 'string' && source) {
+      try {
+        if (/^file:\/\//i.test(source)) file = await fs.realpath(fileURLToPath(source));
+        else if (path.isAbsolute(source) && !(documentPath && rootPath && /^\/(?!\/)/.test(source))) {
+          file = await fs.realpath(source).catch(() => null);
+          if (!file) file = await fs.realpath(decodeURIComponent(source));
+        }
+        else if (documentPath) {
+          // Plain clipboard paths can contain a literal percent sign. Try the literal before URL decoding.
+          const literal = source.split(/[\\/]/).map(encodeURIComponent).join('/').replace(/^([a-z])%3A\//i, '$1:/');
+          file = await mediaFile({ documentPath, source: literal, rootPath }) ?? await mediaFile({ documentPath, source, rootPath });
+        }
+      } catch { return null; }
+    }
+    if (!file || !types.get(path.extname(file).toLowerCase())?.startsWith('image/')) return null;
+    if (!(await fs.stat(file).catch(() => null))?.isFile()) return null;
+    if (!documentPath) {
+      await loadApprovals();
+      const key = pathKey(file);
+      if (!approvedImages.has(key)) {
+        approvedImages.add(key);
+        try {
+          await storage?.saveImageReferences([...approvedImages]);
+        } catch (error) {
+          approvedImages.delete(key);
+          throw error;
+        }
+      }
+    }
+    const markdownPath = referencePath(documentPath, file);
+    return { markdownPath, alt: path.parse(file).name };
+  }
+
+  async function importImage(window, { documentPath, bytes, filename, mime, sourcePath, useClipboard = false, assetFolder } = {}) {
     if (documentPath && !knownDocuments.has(pathKey(documentPath))) throw new Error('Open or save the document before attaching local media.');
     let content = bytes ? Buffer.from(bytes) : null;
     if (useClipboard && !content) {
       const items = await clipboard.read();
-      const mime = ['image/png', 'image/jpeg', 'image/webp'].find(type => items.some(item => item.types.includes(type)));
-      if (!mime) return null;
-      const image = await items.find(item => item.types.includes(mime)).getType(mime);
+      const clipboardMime = ['image/png', 'image/jpeg', 'image/webp'].find(type => items.some(item => item.types.includes(type)));
+      if (!clipboardMime) return null;
+      const image = await items.find(item => item.types.includes(clipboardMime)).getType(clipboardMime);
       content = Buffer.from(await image.arrayBuffer());
-      filename ??= 'clipboard.' + mime.slice('image/'.length);
+      filename ??= 'clipboard.' + clipboardMime.slice('image/'.length);
     }
     if (!content && !sourcePath) {
       const extensions = [...types.keys()].filter((extension) => types.get(extension).startsWith('image/')).map((extension) => extension.slice(1));
@@ -241,13 +341,13 @@ function createAssets({ userDataPath, knownDocuments }) {
       [sourcePath] = selected.filePaths;
     }
     if (sourcePath) {
-      filename ??= path.basename(sourcePath);
-      content ??= await fs.readFile(sourcePath);
+      return referenceImage({ documentPath, sourcePath });
     }
     if (!content?.length) throw new Error('No image data was provided.');
-    const extension = path.extname(filename ?? '').toLowerCase() || '.png';
-    if (!types.has(extension)) throw new Error('This media format is not supported.');
-    const stem = path.basename(filename ?? 'image', extension).replace(/[<>:"/\\|?*\x00-\x1f]/g, '-').trim().slice(0, 80) || 'image';
+    const suffix = path.extname(filename ?? '').toLowerCase();
+    const extension = types.get(suffix)?.startsWith('image/') ? suffix : imageExtensions.get(mime);
+    if (!extension) throw new Error('不支持此图片格式。');
+    const stem = path.parse(filename || 'image').name.replace(/[<>:"/\\|?*\x00-\x1f]/g, '-').trim().slice(0, 80) || 'image';
     const directory = documentPath ? path.resolve(path.dirname(documentPath), assetFolder || `${path.parse(documentPath).name}.assets`) : unattached;
     await fs.mkdir(directory, { recursive: true });
     const destination = path.join(directory, `${stem}-${randomUUID().slice(0, 8)}${extension}`);
@@ -297,7 +397,7 @@ function createAssets({ userDataPath, knownDocuments }) {
     return sources.map((source, index) => ({ source, url: urls[index] }));
   }
 
-  return { embedLocalAssets, handleRequest, importImage, mediaFile, resolveImage, revealImage, saveImageAs, uploadImages };
+  return { collectImage, embedLocalAssets, finishImageCollection, handleRequest, importImage, mediaFile, referenceImage, resolveImage, revealImage, saveImageAs, uploadImages };
 }
 
 module.exports = { createAssets, scheme };

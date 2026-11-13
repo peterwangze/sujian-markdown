@@ -29,6 +29,8 @@
 
 图片菜单把 **复制图片**、**图片另存为…** 和本地图可用的 **在文件夹中显示** 放在一起。另存沿用浏览器的命名和 Typora 的原格式保存，生成副本并保持文档引用；定位沿用桌面文件管理器选中原文件的方式。带链接的图片把链接操作放在下一组。网络图片须先允许加载，内嵌图片和网络图片没有本地原文件可定位。[Chrome 图片下载](https://support.google.com/chrome/answer/95759) · [Typora 另存资源](https://support.typora.io/What%27s-New-1.3/#save-resources-as) · [VS Code 文件定位](https://code.visualstudio.com/docs/editing/getting-started/userinterface#_explorer)
 
+插入现有图片时优先使用原路径，粘贴的截图等只有图像数据时才写入文档资源目录。需要把图片随 Markdown 一起交付时，在图片菜单选择 **复制到文档资源目录**，再保存文档。该操作更新点中的图片引用，方便逐张收拢。这个区分参考了 Typora 对本地文件路径、剪贴板像素和按需复制资源的处理。[Typora 图片指南](https://support.typora.io/Images/)
+
 即时编辑的代码块语言入口位于块右下角。输入语言名或别名后，方向键预选、回车应用，`Esc` 返回编辑。语言标记保存在围栏开头，代码文本原样保留。[Typora 语言选择](https://support.typora.io/Code-Fences-Language-Support/)
 
 ## 验收场景
