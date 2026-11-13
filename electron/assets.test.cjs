@@ -35,4 +35,10 @@ test('resolves local images consistently with and without a configured image roo
   assert.equal(await resolver.mediaFile({ documentPath: path.join(directory, 'unknown.md'), source: pathToFileURL(local).href }), null);
   assert.equal(await resolver.mediaFile({ source: pathToFileURL(local).href }), null);
   assert.equal(await resolver.mediaFile({ source: pathToFileURL(unattached).href }), await fs.realpath(unattached));
+
+  const aliasedProfile = path.join(directory, 'aliased-profile');
+  await fs.symlink(userDataPath, aliasedProfile, process.platform === 'win32' ? 'junction' : 'dir');
+  const aliased = createAssets({ userDataPath: aliasedProfile, knownDocuments: new Map() });
+  assert.equal(await aliased.mediaFile({ source: pathToFileURL(unattached).href }), await fs.realpath(unattached));
+  assert.equal(await aliased.mediaFile({ source: pathToFileURL(local).href }), null);
 });

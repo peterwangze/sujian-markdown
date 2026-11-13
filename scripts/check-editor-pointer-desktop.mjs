@@ -98,7 +98,8 @@ async function rightClick(point) {
 async function verifyContextMenus(locator, word, expected, backward, keepDirection = true) {
   const selected = await textPoints(locator, word);
   await drag(selected, backward);
-  await verifySelection(word, backward);
+  if (keepDirection) await verifySelection(word, backward);
+  else assert.equal((await selection()).text, word);
   await rightClick((await textPoints(locator, word)).middle);
   await item('复制').waitFor();
   assert.equal(await menu.getAttribute('data-selection'), 'true');
@@ -216,12 +217,18 @@ try {
     const selected = await textPoints(code, 'codeword');
     await drag(selected);
     await verifySelection('codeword', false);
-    await rightClick(selected.middle);
+    await rightClick((await textPoints(code, 'codeword')).middle);
+    assert.equal(await menu.getAttribute('data-selection'), 'true');
     await item('复制代码').waitFor();
     await item('代码语言…').waitFor();
     assert.equal(await item('删除线').count(), 0);
     await page.keyboard.press('Escape');
+    await menu.waitFor({ state: 'hidden' });
+    const block = live.locator('[data-type="code-block"]');
+    assert.match(await block.getAttribute('class'), /\bvditor-ir__node--expand\b/);
     await verifySelection('codeword', false);
+    await button('标题级别').focus();
+    assert.doesNotMatch(await block.getAttribute('class'), /\bvditor-ir__node--expand\b/);
   });
 
   const expected = contexts.reduce((source, { word }) => source.replace(word, `~~${word}~~`), markdown);

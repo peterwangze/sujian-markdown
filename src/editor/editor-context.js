@@ -157,11 +157,16 @@ export function restoreEditorContext(context) {
     context.view.dispatch({ selection: context.sourceSelection });
     return true;
   }
-  const { root, range, backward } = context;
+  const { root, range, backward, block } = context;
   if (!root.isConnected || (range && (!root.contains(range.startContainer) || !root.contains(range.endContainer)))) return false;
   root.focus({ preventScroll: true });
   const selection = root.ownerDocument.getSelection();
   if (range) {
+    const code = context.editable && block?.querySelector(':scope > pre.vditor-ir__marker--pre');
+    if (code?.contains(range.startContainer) && code.contains(range.endContainer)) {
+      // Vditor hides the editable code when focus moves to the context menu.
+      block.classList.add('vditor-ir__node--expand');
+    }
     applyDomSelection(selection, range, backward);
   } else if (context.editable) {
     selection.collapse(root, 0);

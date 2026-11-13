@@ -61,11 +61,13 @@ function createAssets({ userDataPath, knownDocuments }) {
     const rootRelative = root && /^\/(?!\/)/.test(decoded) && !/^file:/i.test(raw);
     const candidates = rootRelative ? [path.resolve(root, decoded.slice(1)), path.resolve(base, decoded)] :
       [path.resolve(base, decoded), ...(root && !path.isAbsolute(decoded) ? [path.resolve(root, decoded)] : [])];
+    const allowedBase = !documentPath && await fs.realpath(unattached).catch(() => null);
+    if (!documentPath && !allowedBase) return null;
     for (const candidate of new Set(candidates)) {
       const absolute = await fs.realpath(candidate).catch(() => null);
       if (!absolute || !types.has(path.extname(absolute).toLowerCase())) continue;
-      if (!documentPath) {
-        const relative = path.relative(unattached, absolute);
+      if (allowedBase) {
+        const relative = path.relative(allowedBase, absolute);
         if (relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) continue;
       }
       const stat = await fs.stat(absolute).catch(() => null);
