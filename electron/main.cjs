@@ -479,22 +479,22 @@ async function launch(initialCommand) {
       })`);
       if (!ready) throw new Error('Renderer did not mount its application.');
       const sample = path.join(userDataPath, 'smoke.md');
-      const fileBridgeReady = await window.webContents.executeJavaScript(`(async () => {
+      const openedPath = await window.webContents.executeJavaScript(`(async () => {
         const path = ${JSON.stringify(sample)};
         const root = ${JSON.stringify(userDataPath)};
         const text = '# Sujian desktop smoke';
         const saved = await window.sujian.saveFile({ path, text });
         const opened = await window.sujian.openPath(path);
         const search = await window.sujian.searchDirectory({ path: root, query: 'desktop smoke' });
-        return saved.status === 'ok' && opened.text === text && search.matches.length === 1;
+        return saved.status === 'ok' && opened.text === text && search.matches.length === 1 ? opened.path : null;
       })()`);
-      if (!fileBridgeReady) throw new Error('The desktop file bridge did not pass the smoke test.');
+      if (!openedPath) throw new Error('The desktop file bridge did not pass the smoke test.');
       const smokeImage = path.join(userDataPath, 'smoke 100% #.png');
       const imageBytes = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl2n5sAAAAASUVORK5CYII=', 'base64');
       await fs.writeFile(smokeImage, imageBytes);
       const imageBridgeReady = await window.webContents.executeJavaScript(`(async () => {
         const image = await window.sujian.resolveImage({
-          documentPath: ${JSON.stringify(sample)}, source: 'smoke%20100%25%20%23.png', embed: true,
+          documentPath: ${JSON.stringify(openedPath)}, source: 'smoke%20100%25%20%23.png', embed: true,
         });
         return image === ${JSON.stringify('data:image/png;base64,' + imageBytes.toString('base64'))};
       })()`);
