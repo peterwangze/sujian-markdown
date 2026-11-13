@@ -1,11 +1,12 @@
-const { clipboard, dialog, net } = require('electron');
+const { clipboard, dialog, net, shell } = require('electron');
 const fs = require('node:fs/promises');
+const { COPYFILE_EXCL } = require('node:fs').constants;
 const path = require('node:path');
 const { fileURLToPath, pathToFileURL } = require('node:url');
 const { randomUUID } = require('node:crypto');
 const { execFile } = require('node:child_process');
 const { promisify } = require('node:util');
-const { pathKey } = require('./documents.cjs');
+const { atomicWrite, pathKey } = require('./documents.cjs');
 
 const run = promisify(execFile);
 const scheme = 'sujian-asset';
@@ -17,6 +18,51 @@ const types = new Map(Object.entries({
   '.m4v': 'video/mp4', '.mov': 'video/quicktime', '.mp3': 'audio/mpeg', '.m4a': 'audio/mp4',
   '.ogg': 'audio/ogg', '.opus': 'audio/ogg', '.wav': 'audio/wav', '.flac': 'audio/flac',
 }));
+const imageExtensions = new Map([...types].filter(([, mime]) => mime.startsWith('image/')).reverse().map(([extension, mime]) => [mime, extension]));
+const imageTypeAliases = new Map([['image/vnd.microsoft.icon', 'image/x-icon'], ['image/jpg', 'image/jpeg']]);
+const maxDownloadBytes = 64 * 1024 * 1024;
+
+function imageFilename(name, mime) {
+  const suffix = path.extname(name).toLowerCase();
+  const extension = types.get(suffix) === mime ? suffix : imageExtensions.get(mime);
+  if (types.has(suffix)) name = name.slice(0, -suffix.length);
+  let stem = name.replace(/[<>:"/\\|?*\x00-\x1f]/g, '-').trim().slice(0, 100).replace(/[. ]+$/g, '') || '图片';
+  if (/^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i.test(stem)) stem = '_' + stem;
+  return stem + extension;
+}
+
+async function remoteImageResponse(window, source) {
+  const signal = AbortSignal.timeout(45_000);
+  let url = new URL(source);
+  for (let redirects = 0; redirects < 6; redirects += 1) {
+    if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) break;
+    const response = await window.webContents.session.fetch(url.href, { signal, redirect: 'manual', credentials: 'omit' });
+    if (![301, 302, 303, 307, 308].includes(response.status)) return { response, url };
+    await response.body?.cancel();
+    const location = response.headers.get('location');
+    if (!location) break;
+    const next = new URL(location, url);
+    if (url.protocol === 'https:' && next.protocol !== 'https:') break;
+    url = next;
+  }
+  throw new Error('无法下载图片：图片地址的跳转不可用。');
+}
+
+async function imageBytes(response) {
+  if (!response.body || Number(response.headers.get('content-length')) > maxDownloadBytes) {
+    await response.body?.cancel();
+    throw new Error('无法另存图片：图片为空或超过 64 MB。');
+  }
+  const chunks = [];
+  let size = 0;
+  for await (const chunk of response.body) {
+    size += chunk.byteLength;
+    if (size > maxDownloadBytes) throw new Error('无法另存图片：图片超过 64 MB。');
+    chunks.push(chunk);
+  }
+  if (!size) throw new Error('无法另存图片：图片为空。');
+  return Buffer.concat(chunks, size);
+}
 
 function assetUrl({ documentPath, source, rootPath }) {
   const data = JSON.stringify([documentPath ?? '', source, rootPath ?? '']);
@@ -95,6 +141,76 @@ function createAssets({ userDataPath, knownDocuments }) {
     } catch {
       return null;
     }
+  }
+
+  async function localImageFile(source) {
+    const file = await fromAssetUrl(source);
+    if (!file || !types.get(path.extname(file).toLowerCase())?.startsWith('image/')) {
+      throw new Error('找不到原图片，文件可能已移动或删除。');
+    }
+    return file;
+  }
+
+  async function revealImage(source) {
+    shell.showItemInFolder(await localImageFile(source));
+  }
+
+  async function saveImageAs(window, { source, alt } = {}, allowRemote = false) {
+    if (typeof source !== 'string') throw new Error('无法识别图片来源。');
+    let local, bytes, filename;
+    if (source.startsWith(`${scheme}://`)) {
+      local = await localImageFile(source);
+      filename = path.basename(local);
+    } else {
+      const remote = /^https?:\/\//i.test(source);
+      if (remote && !allowRemote) throw new Error('请先在设置中开启「显示网络图片」。');
+      if (!remote && !/^data:image\//i.test(source)) throw new Error('无法识别图片来源。');
+      const { response, url } = remote ? await remoteImageResponse(window, source) : { response: await fetch(source) };
+      const type = response.headers.get('content-type')?.split(';')[0].trim().toLowerCase();
+      const mime = imageTypeAliases.get(type) ?? type;
+      if (!response.ok || !imageExtensions.has(mime)) {
+        await response.body?.cancel();
+        throw new Error('无法另存图片：资源不可用或图片格式不受支持。');
+      }
+      let name = typeof alt === 'string' ? alt : '';
+      if (url) {
+        const leaf = url.pathname.split('/').at(-1);
+        try { name = decodeURIComponent(leaf) || name; } catch { name = leaf || name; }
+      }
+      filename = imageFilename(name, mime);
+      bytes = await imageBytes(response);
+    }
+
+    const extension = path.extname(filename);
+    const selected = await dialog.showSaveDialog(window, {
+      title: '图片另存为', defaultPath: filename,
+      filters: [{ name: extension.slice(1).toUpperCase() + ' 图片', extensions: [extension.slice(1).toLowerCase()] }],
+      properties: ['showOverwriteConfirmation'],
+    });
+    if (selected.canceled || !selected.filePath) return null;
+    const appendExtension = !path.extname(selected.filePath);
+    const destination = appendExtension ? selected.filePath + extension : selected.filePath;
+    try {
+      if (local) {
+        const original = await fs.stat(local, { bigint: true });
+        const existing = await fs.stat(destination, { bigint: true }).catch(error => {
+          if (error.code !== 'ENOENT') throw error;
+          return null;
+        });
+        if (pathKey(local) === pathKey(destination) || (existing && original.ino !== 0n &&
+            original.dev === existing.dev && original.ino === existing.ino)) return null;
+        await fs.copyFile(local, destination, appendExtension ? COPYFILE_EXCL : 0);
+      } else if (appendExtension) {
+        await fs.writeFile(destination, bytes, { flag: 'wx' });
+      } else {
+        await atomicWrite(destination, bytes);
+      }
+    } catch (error) {
+      // The dialog only confirmed the path it returned, before any added suffix.
+      if (appendExtension && error.code === 'EEXIST') throw new Error('同名图片已存在，请指定完整文件名以确认覆盖，或换一个名称。');
+      throw error;
+    }
+    return destination;
   }
 
   async function handleRequest(request) {
@@ -181,7 +297,7 @@ function createAssets({ userDataPath, knownDocuments }) {
     return sources.map((source, index) => ({ source, url: urls[index] }));
   }
 
-  return { embedLocalAssets, handleRequest, importImage, mediaFile, resolveImage, uploadImages };
+  return { embedLocalAssets, handleRequest, importImage, mediaFile, resolveImage, revealImage, saveImageAs, uploadImages };
 }
 
 module.exports = { createAssets, scheme };

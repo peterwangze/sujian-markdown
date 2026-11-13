@@ -534,13 +534,16 @@ export default function App() {
     const documentActions = [['review', '审阅修订稿']]
     if (contextDoc?.reviewUndo && contextDoc.text === contextDoc.reviewUndo.after) documentActions.push(['undo-review', '撤销本次审阅'])
     if (item.kind === 'editor') {
-      const { editable, selection, kind, href, canCopyImage, canPaste, language, header, columnCount, spelling } = item.detail
+      const { editable, selection, kind, href, canCopyImage, canSaveImage, canRevealImage, canPaste, language, header, columnCount, spelling } = item.detail
       const spellingActions = spelling ? [
         ...spelling.suggestions.slice(0, 5).map((word, index) => ['spelling-' + index, word]),
         ['add-to-dictionary', '添加到词典'],
       ] : []
+      const imageActions = []
+      if (canCopyImage) imageActions.push(['copy-image', '复制图片'])
+      if (canSaveImage) imageActions.push(['save-image-as', '图片另存为…'])
+      if (canRevealImage) imageActions.push(['reveal-image', '在文件夹中显示'])
       const blockActions = []
-      if (canCopyImage) blockActions.push(['copy-image', '复制图片'])
       if (kind === 'code') {
         blockActions.push(['copy-code', '复制代码'])
         if (editable && language !== undefined) blockActions.push(['code-language', '代码语言…'])
@@ -562,12 +565,12 @@ export default function App() {
         const selectionActions = editable ? [['cut', '剪切'], ['copy', '复制']] : [['copy', '复制']]
         const formatActions = editable && kind !== 'code'
           ? [['bold', '加粗'], ['italic', '斜体'], ['strike', '删除线'], ['inline-code', '行内代码']] : []
-        return [selectionActions, formatActions, blockActions, pasteActions, documentActions, historyActions].filter(group => group.length)
+        return [selectionActions, formatActions, imageActions, blockActions, pasteActions, documentActions, historyActions].filter(group => group.length)
       }
       const insertActions = editable && kind === 'text' && !canCopyImage
         ? [['link', '插入链接…'], ['table', '插入表格…'], ['code', '插入代码块']] : []
       if (editable) documentActions.unshift(['save-document', '保存文档'])
-      return [spellingActions, blockActions, insertActions, pasteActions, documentActions, historyActions].filter(group => group.length)
+      return [imageActions, spellingActions, blockActions, insertActions, pasteActions, documentActions, historyActions].filter(group => group.length)
     }
     documentActions.push(['open-document', '打开文档'])
     if (contextDoc) documentActions.push(['save-document', '保存'], ['close-document', '关闭标签'])
@@ -592,6 +595,11 @@ export default function App() {
       if (activeId.current !== item.id || key === 'review' || key === 'undo-review') return
       if (key === 'link' || key === 'table') {
         if (editor.current?.contextCommand('restore-focus')) command(key, undefined, item.id)
+      } else if (key === 'save-image-as') {
+        run(async () => {
+          const saved = await editor.current?.contextCommand(key)
+          if (saved) notify('图片已保存 · ' + leaf(saved))
+        })
       } else run(() => editor.current?.contextCommand(key))
       return
     }

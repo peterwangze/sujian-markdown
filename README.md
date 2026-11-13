@@ -6,7 +6,7 @@
 
 <p align="center"><strong>写作时看见排版，改稿时看清变化。</strong></p>
 <p align="center">给长文、技术文档和改稿用的本地 Markdown 编辑器。边写边看排版，用键盘找到文件和命令，再把确认过的改动交付出去。</p>
-<p align="center"><a href="https://github.com/peterwangze/sujian-markdown/releases/tag/v1.4.8"><strong>下载 v1.4.8 离线安装包</strong></a> · Windows / macOS / Linux</p>
+<p align="center"><a href="https://github.com/peterwangze/sujian-markdown/releases/tag/v1.4.9"><strong>下载 v1.4.9 离线安装包</strong></a> · Windows / macOS / Linux</p>
 
 ## 用顺手的方式写作
 
@@ -31,11 +31,14 @@
 - **在提纲、清单和表格里调整文字格式。** 即时编辑的加粗、斜体、删除线和行内代码会保留选区两侧的空白。源码与分栏中，跨几个段落、标题或列表项的选区也能按块格式化，保存后仍可在其他 Markdown 工具中渲染。
 - **在元素上找到对应操作。** 右击表格可增删行列，右击代码块可复制代码或更改语言，右击链接可打开或复制地址。按 `Esc` 关闭代码块右键菜单后可继续操作原选区。
 - **把图片直接粘贴到别处。** 在即时编辑、分栏预览或阅读模式中右击已加载的图片，选择 **复制图片**，即可把图像粘贴到聊天、文档或其他支持图片粘贴的应用。
+- **保存原图或找到它在磁盘上的位置。** 右击已加载的图片，选 **图片另存为…** 保存一份原格式副本，Markdown 中的引用保持不变。本地图片还可以选 **在文件夹中显示**，由系统文件管理器定位原图。内嵌图片和已允许加载的网络图片也可另存。
 - **在文件列表里直接审阅。** 右击侧栏文件、最近文档或标签页，选择 **审阅修订稿**。目标文档可以在后台打开，你仍可留在正在写的标签页。用键盘聚焦目标后，也可按 `Shift+F10` 打开菜单。
 - **在项目目录里直接建笔记。** 右击工作区根目录、子文件夹或固定文件夹，选择 **新建文件**。只输入名称时会补上 `.md`，新文档会在标签页打开，可直接开始写。
 - **在代码旁选择语言或图表类型。** 在即时编辑中点击代码块右下角的标签，用语言名或 `py`、`ts`、`proto` 等别名搜索。已有的 Pandoc 围栏代码和 Quarto 代码单元也能高亮，切换语言时保留原有属性和选项。点击代码块中的复制按钮可提取代码。Flowchart.js 支持 `flowchart` 和 `flow`，Graphviz 支持 `graphviz` 和 `dot`，正文以 `flowchart LR` 或 `graph TD` 开头时选择 `mermaid`。
 
 ![在素笺代码块右下角打开语言选择器，输入 ja 后列出 JavaScript 和 Java。](docs/images/sujian-code-language.png)
+
+<img src="docs/images/sujian-image-context.png" alt="即时编辑中右击带链接的图片。菜单顶部是复制图片、图片另存为、在文件夹中显示，随后是链接操作。" width="460">
 
 ## 写技术文档、审改稿、交付定稿
 
@@ -87,15 +90,15 @@ Windows 使用安装目录中的 `Sujian.exe`。macOS 使用 `/Applications/Suji
 
 | 系统 | x64 / Intel | ARM64 / Apple 芯片 |
 | --- | --- | --- |
-| Windows | [EXE](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.8/Sujian-1.4.8-win-x64.exe) | [EXE](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.8/Sujian-1.4.8-win-arm64.exe) |
-| macOS 13+ | [DMG](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.8/Sujian-1.4.8-mac-x64.dmg) | [DMG](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.8/Sujian-1.4.8-mac-arm64.dmg) |
-| Linux | [AppImage](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.8/Sujian-1.4.8-linux-x86_64.AppImage) · [DEB](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.8/Sujian-1.4.8-linux-amd64.deb) | [AppImage](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.8/Sujian-1.4.8-linux-arm64.AppImage) · [DEB](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.8/Sujian-1.4.8-linux-arm64.deb) |
+| Windows | [EXE](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.9/Sujian-1.4.9-win-x64.exe) | [EXE](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.9/Sujian-1.4.9-win-arm64.exe) |
+| macOS 13+ | [DMG](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.9/Sujian-1.4.9-mac-x64.dmg) | [DMG](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.9/Sujian-1.4.9-mac-arm64.dmg) |
+| Linux | [AppImage](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.9/Sujian-1.4.9-linux-x86_64.AppImage) · [DEB](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.9/Sujian-1.4.9-linux-amd64.deb) | [AppImage](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.9/Sujian-1.4.9-linux-arm64.AppImage) · [DEB](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.9/Sujian-1.4.9-linux-arm64.deb) |
 
 - **Windows** 双击 EXE 安装。安装包未做 Authenticode 签名。ARM64 版的 Pandoc 使用 Windows 11 的 x64 仿真。
 - **macOS** 挂载 DMG 后，将素笺拖到“应用程序”。此版本采用临时签名，首次启动时可能需要在“隐私与安全性”中允许打开。[Apple 打开应用说明](https://support.apple.com/en-us/102445)
 - **Linux** 赋予 AppImage 执行权限后打开，或通过软件包管理器安装 DEB。运行依赖发行版提供的 Chromium 系统库。
 
-安装包包含应用运行时、渲染资源、字体与 Pandoc。六种系统与架构组合均通过成品启动检查。[SHA-256 清单](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.8/SHA256SUMS.txt) · [构建与验证记录](https://github.com/peterwangze/sujian-markdown/actions/workflows/release.yml)
+安装包包含应用运行时、渲染资源、字体与 Pandoc。六种系统与架构组合均通过成品启动检查。[SHA-256 清单](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.9/SHA256SUMS.txt) · [构建与验证记录](https://github.com/peterwangze/sujian-markdown/actions/workflows/release.yml)
 
 ## 开发与兼容范围
 

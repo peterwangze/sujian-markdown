@@ -27,6 +27,8 @@
 
 普通正文右击先显示插入链接、表格和代码块，再显示粘贴、保存和审阅。右击选中文字先显示剪切、复制和格式，粘贴项注明会替换选区。右击选区外会收起旧选区，按点击位置提供操作。表格、代码块和链接在无选区时优先显示对应操作，有文字选区时剪切和复制优先。[VS Code 菜单指南](https://code.visualstudio.com/api/ux-guidelines/context-menus) · [Obsidian 表格插入](https://obsidian.md/help/advanced-syntax) · [Typora 复制与粘贴](https://support.typora.io/Copy-and-Paste/)
 
+图片菜单把 **复制图片**、**图片另存为…** 和本地图可用的 **在文件夹中显示** 放在一起。另存沿用浏览器的命名和 Typora 的原格式保存，生成副本并保持文档引用；定位沿用桌面文件管理器选中原文件的方式。带链接的图片把链接操作放在下一组。网络图片须先允许加载，内嵌图片和网络图片没有本地原文件可定位。[Chrome 图片下载](https://support.google.com/chrome/answer/95759) · [Typora 另存资源](https://support.typora.io/What%27s-New-1.3/#save-resources-as) · [VS Code 文件定位](https://code.visualstudio.com/docs/editing/getting-started/userinterface#_explorer)
+
 即时编辑的代码块语言入口位于块右下角。输入语言名或别名后，方向键预选、回车应用，`Esc` 返回编辑。语言标记保存在围栏开头，代码文本原样保留。[Typora 语言选择](https://support.typora.io/Code-Fences-Language-Support/)
 
 ## 验收场景

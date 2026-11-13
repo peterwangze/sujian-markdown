@@ -162,7 +162,7 @@ export function restoreEditorContext(context) {
   root.focus({ preventScroll: true });
   const selection = root.ownerDocument.getSelection();
   if (range) {
-    const code = context.editable && block?.querySelector(':scope > pre.vditor-ir__marker--pre');
+    const code = context.editable ? block?.querySelector(':scope > pre.vditor-ir__marker--pre') : null;
     if (code?.contains(range.startContainer) && code.contains(range.endContainer)) {
       // Vditor hides the editable code when focus moves to the context menu.
       block.classList.add('vditor-ir__node--expand');

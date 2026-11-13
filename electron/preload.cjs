@@ -64,6 +64,8 @@ contextBridge.exposeInMainWorld('sujian', {
   removeFont: invoke('remove-font'),
   importImage: invoke('import-image'),
   resolveImage: invoke('resolve-image'),
+  saveImageAs: invoke('save-image-as'),
+  revealImage: invoke('reveal-image'),
   uploadImages: invoke('upload-images'),
   importDocument: invoke('import-document'),
   exportDocument: invoke('export-document'),

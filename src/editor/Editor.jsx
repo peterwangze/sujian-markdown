@@ -998,7 +998,8 @@ export function Editor({
 
     const image = event.target.closest?.('img');
     const imageTarget = !keyboard && desktop.copyImageAt && target.root?.contains(image) && image.complete && image.naturalWidth
-      ? { element: image, source: image.currentSrc, x: event.clientX, y: event.clientY } : null;
+      ? { element: image, source: image.currentSrc, alt: image.alt, x: event.clientX, y: event.clientY } : null;
+    const localImage = imageTarget?.source.startsWith('sujian-asset://local/');
     const canCheckSpelling = spellcheck && context.editable && !context.selection && !imageTarget && context.kind !== 'code';
     const spelling = canCheckSpelling ? (context.view
       ? sourceSpellingAt(context.view.state, context.sourceOffset, desktop.spellingSuggestions)
@@ -1008,6 +1009,9 @@ export function Editor({
       selection: context.selection, editable: context.editable, mode, kind: context.kind,
       href: context.href, position: context.position,
       canCopyImage: Boolean(imageTarget),
+      canSaveImage: Boolean(imageTarget && desktop.saveImageAs && (localImage || /^data:image\//i.test(imageTarget.source) ||
+        (allowRemoteMedia && /^https?:\/\//i.test(imageTarget.source)))),
+      canRevealImage: Boolean(localImage && desktop.revealImage),
       canPaste: context.editable && Boolean(desktop.editClipboard || navigator.clipboard?.readText),
       language: context.editable && context.block ? codeFenceLanguage(context.block, editorFenceSource(context.block)) : undefined,
       header: context.cell?.tagName === 'TH', columnCount: context.cell?.parentElement.cells.length,
@@ -1019,6 +1023,13 @@ export function Editor({
     const context = editorContext.current;
     if (!context || context.docId !== content.current.id || context.mode !== latest.current.mode) return false;
     if (id === 'copy-image' && context.imageTarget) return copyContextImage(context);
+    if (id === 'save-image-as' || id === 'reveal-image') {
+      const { element, source, alt } = context.imageTarget ?? {};
+      if (!element || !context.root.contains(element) || element.currentSrc !== source) {
+        throw new Error('图片已发生变化，请重新右击图片。');
+      }
+      return id === 'save-image-as' ? desktop.saveImageAs({ source, alt }) : desktop.revealImage(source);
+    }
     if (id === 'copy-code' && context.codeText !== undefined) return desktop.writeClipboard({ text: context.codeText });
     if (id === 'copy-link' && context.href) return desktop.writeClipboard({ text: context.href });
     if (id === 'open-link' && context.href) return openHref(context.href, context.root?.closest('.editor-preview, .editor-live'));
