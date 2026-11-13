@@ -19,7 +19,7 @@ export function DocumentContextMenu({ context, groups, onAction, onDismiss }) {
   const { item } = context
   const editor = item.kind === 'editor'
   const selection = editor && item.detail.selection
-  const heading = selection ? '选中文字' : editor && item.detail.editable ? '当前位置' : item.name
+  const heading = selection ? '选中文字' : editor && item.detail.canCopyImage ? '图片' : editor && item.detail.editable ? '当前位置' : item.name
 
   useLayoutEffect(() => {
     const menu = ref.current

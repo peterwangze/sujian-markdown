@@ -534,17 +534,18 @@ export default function App() {
     const documentActions = [['review', '审阅修订稿']]
     if (contextDoc?.reviewUndo && contextDoc.text === contextDoc.reviewUndo.after) documentActions.push(['undo-review', '撤销本次审阅'])
     if (item.kind === 'editor') {
-      const { editable, selection, kind, href, canPaste, language, header, columnCount, spelling } = item.detail
+      const { editable, selection, kind, href, canCopyImage, canPaste, language, header, columnCount, spelling } = item.detail
       const spellingActions = spelling ? [
         ...spelling.suggestions.slice(0, 5).map((word, index) => ['spelling-' + index, word]),
         ['add-to-dictionary', '添加到词典'],
       ] : []
       const blockActions = []
+      if (canCopyImage) blockActions.push(['copy-image', '复制图片'])
       if (kind === 'code') {
         blockActions.push(['copy-code', '复制代码'])
         if (editable && language !== undefined) blockActions.push(['code-language', '代码语言…'])
       }
-      if (kind === 'link' && href) blockActions.push(['open-link', '打开链接'], ['copy-link', '复制链接地址'])
+      if (href && (kind === 'link' || canCopyImage)) blockActions.push(['open-link', '打开链接'], ['copy-link', '复制链接地址'])
       if (kind === 'table' && editable) {
         if (!header) blockActions.push(['table-row-above', '上方插入行'])
         blockActions.push(['table-row-below', '下方插入行'], ['table-column-left', '左侧插入列'], ['table-column-right', '右侧插入列'])
@@ -563,7 +564,7 @@ export default function App() {
           ? [['bold', '加粗'], ['italic', '斜体'], ['strike', '删除线'], ['inline-code', '行内代码']] : []
         return [selectionActions, formatActions, blockActions, pasteActions, documentActions, historyActions].filter(group => group.length)
       }
-      const insertActions = editable && kind === 'text'
+      const insertActions = editable && kind === 'text' && !canCopyImage
         ? [['link', '插入链接…'], ['table', '插入表格…'], ['code', '插入代码块']] : []
       if (editable) documentActions.unshift(['save-document', '保存文档'])
       return [spellingActions, blockActions, insertActions, pasteActions, documentActions, historyActions].filter(group => group.length)
@@ -671,7 +672,7 @@ export default function App() {
             <Editor docId={active.id} value={active.text} mode={mode} editorRef={editor}
               onChange={text => amend(active.id, { text })} onSelection={setSelection} onLink={followLink} onImage={insertImages}
               onContextMenu={openEditorContext}
-              assetUrl={assetUrl} resolveImage={resolveImage} theme={renderTheme}
+              assetUrl={assetUrl} resolveImage={resolveImage} embedImage={embeddedImage} theme={renderTheme}
               wrap={settings.wrap} allowRemoteMedia={settings.remoteMedia}
               focusMode={settings.focusMode} typewriter={settings.typewriter} spellcheck={settings.proseSpellcheck}/>
           </div>

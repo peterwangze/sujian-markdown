@@ -237,7 +237,7 @@ function ensureLinkCaret(root, remembered) {
 }
 
 export function Editor({
-  docId, value = '', mode = 'live', onChange, onSelection, onLink, onImage, resolveImage,
+  docId, value = '', mode = 'live', onChange, onSelection, onLink, onImage, resolveImage, embedImage,
   assetUrl, focusMode = false, typewriter = false, spellcheck = false, wrap = true, allowRemoteMedia = true, theme = 'light', editorRef,
   onContextMenu,
 }) {
@@ -996,14 +996,18 @@ export function Editor({
     const context = target.view ? sourceContext(event, target.view, keyboard, snapshot) :
       domContext(event, target.root, target.editable, keyboard, snapshot);
 
-    const canCheckSpelling = spellcheck && context.editable && !context.selection && context.kind !== 'code';
+    const image = event.target.closest?.('img');
+    const imageTarget = !keyboard && desktop.copyImageAt && target.root?.contains(image) && image.complete && image.naturalWidth
+      ? { element: image, source: image.currentSrc, x: event.clientX, y: event.clientY } : null;
+    const canCheckSpelling = spellcheck && context.editable && !context.selection && !imageTarget && context.kind !== 'code';
     const spelling = canCheckSpelling ? (context.view
       ? sourceSpellingAt(context.view.state, context.sourceOffset, desktop.spellingSuggestions)
       : spellingAt(context.root, context.range, desktop.spellingSuggestions)) : null;
-    editorContext.current = { ...context, mode, docId, spelling };
+    editorContext.current = { ...context, mode, docId, spelling, imageTarget };
     onContextMenu(event, {
       selection: context.selection, editable: context.editable, mode, kind: context.kind,
       href: context.href, position: context.position,
+      canCopyImage: Boolean(imageTarget),
       canPaste: context.editable && Boolean(desktop.editClipboard || navigator.clipboard?.readText),
       language: context.editable && context.block ? codeFenceLanguage(context.block, editorFenceSource(context.block)) : undefined,
       header: context.cell?.tagName === 'TH', columnCount: context.cell?.parentElement.cells.length,
@@ -1014,6 +1018,7 @@ export function Editor({
   function contextCommand(id, payload) {
     const context = editorContext.current;
     if (!context || context.docId !== content.current.id || context.mode !== latest.current.mode) return false;
+    if (id === 'copy-image' && context.imageTarget) return copyContextImage(context);
     if (id === 'copy-code' && context.codeText !== undefined) return desktop.writeClipboard({ text: context.codeText });
     if (id === 'copy-link' && context.href) return desktop.writeClipboard({ text: context.href });
     if (id === 'open-link' && context.href) return openHref(context.href, context.root?.closest('.editor-preview, .editor-live'));
@@ -1057,6 +1062,45 @@ export function Editor({
         document.execCommand('insertText', false, text);
       }
     });
+  }
+
+  async function copyContextImage(context) {
+    const { element, source, x, y } = context.imageTarget;
+    const isCurrent = () => editorContext.current === context && context.docId === content.current.id &&
+      context.mode === latest.current.mode && context.root.contains(element) && element.currentSrc === source;
+    // Encode local pixels directly, so paste targets never have to follow an app-only URL.
+    if (/^(?:sujian-asset:|blob:|data:image\/)/i.test(source)) {
+      let png;
+      try {
+        let image = element;
+        if (source.startsWith('sujian-asset:')) {
+          const embedded = await embedImage?.(source);
+          if (!embedded?.startsWith('data:image/')) throw new Error('图片资源不可用。');
+          image = new Image();
+          image.src = embedded;
+          await image.decode();
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = image.naturalWidth;
+        canvas.height = image.naturalHeight;
+        canvas.getContext('2d').drawImage(image, 0, 0);
+        png = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+      } catch {
+        // If the decoded image cannot be exported to canvas, try Chromium's copy command.
+      }
+      if (png) {
+        const bytes = new Uint8Array(await png.arrayBuffer());
+        if (isCurrent()) return desktop.writeClipboardImage(bytes);
+        return false;
+      }
+    }
+    // Let the menu close before Chromium hit-tests the document at this point.
+    await new Promise(resolve => requestAnimationFrame(resolve));
+    if (!isCurrent()) return false;
+    if (element.ownerDocument.elementFromPoint(x, y) !== element) {
+      throw new Error('图片已离开当前视野，请重新右击图片。');
+    }
+    return desktop.copyImageAt({ x, y });
   }
 
   async function copyContextSelection(context, cut) {

@@ -17,6 +17,7 @@ const suites = [
   'check-delivery-desktop',
   'check-table-layout-desktop',
   'check-content-width-desktop',
+  'check-image-context-desktop',
   'check-media-export-desktop',
   'check-html-desktop',
   'check-markdown-desktop',

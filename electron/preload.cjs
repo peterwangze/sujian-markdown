@@ -71,6 +71,8 @@ contextBridge.exposeInMainWorld('sujian', {
   assetUrl,
   filePath: (file) => webUtils.getPathForFile(file),
   writeClipboard: invoke('write-clipboard'),
+  writeClipboardImage: invoke('write-clipboard-image'),
+  copyImageAt: invoke('copy-image-at'),
   editClipboard: invoke('edit-clipboard'),
   spellingSuggestions: word => webFrame.isWordMisspelled(word) ? webFrame.getWordSuggestions(word) : null,
   addSpellingWord: invoke('add-spelling-word'),

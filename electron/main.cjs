@@ -398,6 +398,22 @@ function installIpc({ assets, conversion, fonts, storage, operations }) {
     }
     if (Object.keys(allowed).length) return clipboard.write([new ClipboardItem(allowed)]);
   });
+  handle('write-clipboard-image', (_state, bytes) => {
+    if (!(bytes instanceof Uint8Array) || bytes.length === 0) throw new Error('无法复制这张图片。');
+    return clipboard.write([new ClipboardItem({ 'image/png': new Blob([bytes], { type: 'image/png' }) })]);
+  });
+  handle('copy-image-at', ({ window }, point) => {
+    if (!Number.isFinite(point?.x) || !Number.isFinite(point?.y)) throw new Error('无效的图片位置。');
+    // Renderer coordinates are CSS pixels; Chromium's hit test takes window DIPs.
+    const zoom = window.webContents.getZoomFactor();
+    const x = Math.round(point?.x * zoom);
+    const y = Math.round(point?.y * zoom);
+    const { width, height } = window.getContentBounds();
+    if (x < 0 || y < 0 || x >= width || y >= height) {
+      throw new Error('图片已离开当前视野，请重新右击图片。');
+    }
+    window.webContents.copyImageAt(x, y);
+  });
   handle('edit-clipboard', ({ window }, action) => {
     if (action !== 'paste' && action !== 'pasteAndMatchStyle') throw new Error('不支持的剪贴板操作。');
     window.webContents[action]();
