@@ -49,25 +49,29 @@ function createAssets({ userDataPath, knownDocuments }) {
     let decoded;
     try {
       if (/^file:/i.test(raw)) decoded = fileURLToPath(raw);
-      else if (/^[a-z][a-z+.-]+:/i.test(raw) && !/^[a-z]:[\\/]/i.test(raw)) return null;
-      else decoded = decodeURIComponent(raw);
+      else {
+        decoded = decodeURIComponent(raw);
+        if (/^[a-z][a-z+.-]*:/i.test(decoded) && !/^[a-z]:[\\/]/i.test(decoded)) return null;
+      }
     } catch {
       return null;
     }
-    let base = documentPath ? path.dirname(documentPath) : unattached;
-    if (documentPath && rootPath) base = path.resolve(base, rootPath);
-    if (rootPath && /^[\\/]/.test(decoded)) decoded = decoded.replace(/^[\\/]+/, '');
-    const candidate = path.resolve(base, decoded);
-    const absolute = await fs.realpath(candidate).catch(() => null);
-    if (!absolute) return null;
-    if (!documentPath) {
-      const relative = path.relative(unattached, absolute);
-      if (relative.startsWith('..') || path.isAbsolute(relative)) return null;
+    const base = documentPath ? path.dirname(documentPath) : unattached;
+    const root = documentPath && rootPath ? path.resolve(base, rootPath) : '';
+    const rootRelative = root && /^\/(?!\/)/.test(decoded) && !/^file:/i.test(raw);
+    const candidates = rootRelative ? [path.resolve(root, decoded.slice(1)), path.resolve(base, decoded)] :
+      [path.resolve(base, decoded), ...(root && !path.isAbsolute(decoded) ? [path.resolve(root, decoded)] : [])];
+    for (const candidate of new Set(candidates)) {
+      const absolute = await fs.realpath(candidate).catch(() => null);
+      if (!absolute || !types.has(path.extname(absolute).toLowerCase())) continue;
+      if (!documentPath) {
+        const relative = path.relative(unattached, absolute);
+        if (relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) continue;
+      }
+      const stat = await fs.stat(absolute).catch(() => null);
+      if (stat?.isFile()) return absolute;
     }
-    if (!types.has(path.extname(absolute).toLowerCase())) return null;
-    const stat = await fs.stat(absolute).catch(() => null);
-    if (!stat?.isFile()) return null;
-    return absolute;
+    return null;
   }
 
   async function resolveImage({ documentPath, source, rootPath, embed = false }) {

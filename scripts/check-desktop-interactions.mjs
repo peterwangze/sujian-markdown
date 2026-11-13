@@ -15,6 +15,7 @@ const suites = [
   'check-settings-desktop',
   'check-review-workflows-desktop',
   'check-delivery-desktop',
+  'check-media-export-desktop',
   'check-html-desktop',
   'check-markdown-desktop',
   'check-spellcheck-desktop',

@@ -277,18 +277,21 @@ export default function App() {
     if (!active) return false
     const text = flushEditor() ?? active.text
     const diagramSources = ['docx', 'epub'].includes(format) ? [] : undefined
+    const missing = new Set()
     const html = visualExports.has(format) ? await renderDocument(text, {
       title: active.name, styled: format !== 'html-plain', theme: renderTheme, resolveImage: embeddedImage,
       allowRemoteMedia: settings.remoteMedia, print: format === 'pdf' || format === 'print',
       typography: { fontSize: settings.fontSize, lineHeight: settings.lineHeight },
-      diagramSources,
+      diagramSources, unavailableMedia: source => missing.add(source),
     }) : undefined
     const result = await desktop.exportDocument({
       format, html, text, diagramSources, documentPath: active.path, defaultName: active.name,
-      options: { ...options, imageRoot: settings.imageRoot, css: settings.customCss },
+      options: { ...options, imageRoot: settings.imageRoot, allowRemoteMedia: settings.remoteMedia, css: settings.customCss },
     })
     if (!result) return false
-    if (result.path) notify('已导出 ' + leaf(result.path))
+    const count = result.missingImages || missing.size
+    if (result.path) notify('已导出 ' + leaf(result.path) + (count ? ` · ${count} 处本地资源无法内嵌` : ''), Boolean(count))
+    else if (count) notify(`${count} 处本地资源无法内嵌`, true)
     return true
   }
 

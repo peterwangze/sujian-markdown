@@ -489,6 +489,16 @@ async function launch(initialCommand) {
         return saved.status === 'ok' && opened.text === text && search.matches.length === 1;
       })()`);
       if (!fileBridgeReady) throw new Error('The desktop file bridge did not pass the smoke test.');
+      const smokeImage = path.join(userDataPath, 'smoke 100% #.png');
+      const imageBytes = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl2n5sAAAAASUVORK5CYII=', 'base64');
+      await fs.writeFile(smokeImage, imageBytes);
+      const imageBridgeReady = await window.webContents.executeJavaScript(`(async () => {
+        const image = await window.sujian.resolveImage({
+          documentPath: ${JSON.stringify(sample)}, source: 'smoke%20100%25%20%23.png', embed: true,
+        });
+        return image === ${JSON.stringify('data:image/png;base64,' + imageBytes.toString('base64'))};
+      })()`);
+      if (!imageBridgeReady) throw new Error('The desktop image export bridge did not pass the smoke test.');
       const fontBridgeReady = await window.webContents.executeJavaScript(`(async () => {
         const fonts = await window.sujian.listFonts();
         const samples = [

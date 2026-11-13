@@ -67,13 +67,45 @@ const sanitizeOptions = {
   FORBID_ATTR: ['autofocus', 'srcdoc', 'srcset'],
 };
 
-function sanitizedFragment(html, styles = false) {
-  const fragment = DOMPurify.sanitize(html, {
-    ...sanitizeOptions,
-    FORBID_ATTR: styles ? sanitizeOptions.FORBID_ATTR : [...sanitizeOptions.FORBID_ATTR, 'style'],
-    FORBID_TAGS: styles === 'svg' ? sanitizeOptions.FORBID_TAGS.filter((tag) => tag !== 'style') : sanitizeOptions.FORBID_TAGS,
-    RETURN_DOM_FRAGMENT: true,
-  });
+const mediaElements = {
+  img: ['src'], audio: ['src'], video: ['src', 'poster'], source: ['src'],
+};
+
+function keepLocalMedia(node, data) {
+  if (node.namespaceURI !== 'http://www.w3.org/1999/xhtml' || !Object.hasOwn(mediaElements, node.localName) ||
+      !mediaElements[node.localName].includes(data.attrName)) return;
+  if (/^(?:file:\/\/|[a-z]:[\\/]|[a-z]:%5c)/i.test(data.attrValue)) {
+    // Keep the address inert until the desktop resolver validates it.
+    node.setAttribute(`data-sujian-media-${data.attrName}`, data.attrValue);
+    data.keepAttr = false;
+  }
+}
+
+function clearLocalMediaHints(node) {
+  if (node.nodeType !== Node.ELEMENT_NODE) return;
+  node.removeAttribute('data-sujian-media-src');
+  node.removeAttribute('data-sujian-media-poster');
+}
+
+function sanitizedFragment(html, styles = false, localMedia = false) {
+  if (localMedia) {
+    DOMPurify.addHook('beforeSanitizeAttributes', clearLocalMediaHints);
+    DOMPurify.addHook('uponSanitizeAttribute', keepLocalMedia);
+  }
+  let fragment;
+  try {
+    fragment = DOMPurify.sanitize(html, {
+      ...sanitizeOptions,
+      FORBID_ATTR: styles ? sanitizeOptions.FORBID_ATTR : [...sanitizeOptions.FORBID_ATTR, 'style'],
+      FORBID_TAGS: styles === 'svg' ? sanitizeOptions.FORBID_TAGS.filter((tag) => tag !== 'style') : sanitizeOptions.FORBID_TAGS,
+      RETURN_DOM_FRAGMENT: true,
+    });
+  } finally {
+    if (localMedia) {
+      DOMPurify.removeHook('uponSanitizeAttribute', keepLocalMedia);
+      DOMPurify.removeHook('beforeSanitizeAttributes', clearLocalMediaHints);
+    }
+  }
   if (styles === 'inline') {
     sanitizeInlineStyles(fragment);
   } else if (styles === 'svg') {
@@ -265,22 +297,28 @@ export function isLocalImage(source) {
   return Boolean(source) && !/^(?:https?:|data:|blob:|sujian-asset:|\/\/|#)/i.test(source);
 }
 
-async function resolveAssets(root, resolveImage, inlineRemote) {
+async function resolveAssets(root, resolveImage, inlineRemote, unavailable) {
   if (!resolveImage) return;
 
   const requests = [];
-  for (const media of root.querySelectorAll('img[src], audio[src], video[src], source[src], video[poster]')) {
-    for (const attribute of ['src', 'poster']) {
-      const source = media.getAttribute(attribute);
-      if (!source || (!isLocalImage(source) && (!inlineRemote || !/^https?:/i.test(source)))) continue;
+  for (const media of root.querySelectorAll('img, audio, video, source')) {
+    for (const attribute of mediaElements[media.localName]) {
+      const hint = `data-sujian-media-${attribute}`;
+      const source = media.getAttribute(hint) ?? media.getAttribute(attribute);
+      media.removeAttribute(hint);
+      const local = isLocalImage(source);
+      if (!source || (!local && (!inlineRemote || !/^https?:/i.test(source)))) continue;
 
+      const skip = () => {
+        if (!unavailable || !local) return;
+        unavailable(source);
+        media.removeAttribute(attribute);
+      };
       requests.push(Promise.resolve().then(() => resolveImage(source)).then((resolved) => {
         if (typeof resolved === 'string' && /^(?:sujian-asset:\/\/local\/|blob:|data:(?:image|audio|video)\/|https?:)/i.test(resolved)) {
           media.setAttribute(attribute, resolved);
-        }
-      }).catch(() => {
-        // Preserve the address and alt text when an asset is missing.
-      }));
+        } else skip();
+      }).catch(skip));
     }
   }
   await Promise.all(requests);
@@ -330,7 +368,8 @@ function restrictReviewResources(root) {
 }
 
 export async function renderPreview(markdown, {
-  resolveImage, theme = 'light', inlineRemote = false, allowRemoteMedia = true, preview = true, embeddedMediaOnly = false, diagramSources,
+  resolveImage, theme = 'light', inlineRemote = false, allowRemoteMedia = true, preview = true,
+  embeddedMediaOnly = false, diagramSources, unavailableMedia,
 } = {}) {
   await loadVendorScript('vditorLuteScript', 'lute/lute.min.js');
   const explicitHeadingIds = new Map();
@@ -341,7 +380,7 @@ export async function renderPreview(markdown, {
   });
   const root = document.createElement('article');
   root.className = 'vditor-reset';
-  const fragment = sanitizedFragment(html, embeddedMediaOnly ? false : 'inline');
+  const fragment = sanitizedFragment(html, embeddedMediaOnly ? false : 'inline', Boolean(resolveImage) && !embeddedMediaOnly);
   if (embeddedMediaOnly) {
     restrictReviewResources(fragment);
   } else if (!allowRemoteMedia) {
@@ -363,7 +402,7 @@ export async function renderPreview(markdown, {
   await Promise.all([
     renderMath([...root.querySelectorAll('.language-math')]),
     renderDiagrams(root, theme, { embeddedMediaOnly, diagramSources }),
-    resolveAssets(root, embeddedMediaOnly ? undefined : resolveImage, inlineRemote),
+    resolveAssets(root, embeddedMediaOnly ? undefined : resolveImage, inlineRemote, unavailableMedia),
   ]);
   await highlightCode(root, theme, preview);
   if (embeddedMediaOnly) restrictReviewResources(root);

@@ -101,6 +101,7 @@
 | `EXP-05` Reveal.js、自定义 Pandoc | Reveal.js 支持本地导航。自定义格式接收格式名及合法扩展名，错误输入有反馈。 | `check-delivery-desktop.mjs` 核对两个输出。断网打开 Reveal.js 有历史记录。无效 writer 的桌面失败路径待实测。 |
 | `IMP-01` 导入与取消 | 可选 DOCX、ODT、RTF、LaTeX（`.latex`、`.tex`、`.ltx`）、RST（`.rst`、`.rest`）、Org、MediaWiki（`.wiki`）、DokuWiki、Textile、OPML、EPUB、HTML（`.html`、`.htm`）。取消保留当前文档，成功生成 Markdown 草稿。 | `check-delivery-desktop.mjs` 已通过 DOCX、ODT、EPUB、HTML 和 RTF 往返。其余导入格式、扩展名别名及坏文件需分组补验。 |
 | `EXP-06` 打印与失败路径 | 用物理打印机或系统 PDF 驱动执行打印和取消。检查分页与纸面配色。测试无写权限、取消选择和拒绝覆盖原 Markdown。 | 源文件保护和取消导出已通过。物理打印、原生打印面板与权限失败待实测。 |
+| `EXP-07` 本地图片离线交付 | 同一文档混用相对路径、中文空格和特殊字符编码、引用式写法、HTML 图片、设置的图片根路径、绝对路径和 `file://`。导出后移动产物，移走原文档、图片和应用草稿资源。另测未保存草稿粘贴图、另存后导出和真正缺失的图片。 | Windows 实测通过预览解码、打印交接、离线 HTML/幻灯片像素、PDF 图像、PNG 像素及 Word/EPUB/ODT/RTF 内嵌数据。Word 和 RTF 的 SVG、WebP 转换及 HTML、Word 的缺图提示通过。见 `check-media-export-desktop.mjs`。 |
 
 ## 桌面系统、终端和安装包
 

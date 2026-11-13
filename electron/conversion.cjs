@@ -7,6 +7,7 @@ const { promisify } = require('node:util');
 const { randomUUID } = require('node:crypto');
 const { pathToFileURL } = require('node:url');
 const { atomicWrite } = require('./documents.cjs');
+const { htmlWriters, imageWriters, normalizePandocMedia } = require('./pandoc-media.cjs');
 const { unwrapGithubMath } = require('../src/editor/github-math.js');
 
 const run = promisify(execFile);
@@ -153,7 +154,15 @@ function createConversion({ assets, userDataPath }) {
       const file = path.join(temporary, 'document.html');
       await fs.writeFile(file, htmlDocument(html, title, { options }), 'utf8');
       await window.loadFile(file);
-      await window.webContents.executeJavaScript('document.fonts.ready.then(() => true)');
+      await window.webContents.executeJavaScript(`(async () => {
+        await document.fonts.ready;
+        const images = Array.from(document.images).filter(image => image.hasAttribute('src'));
+        if (images.length) await Promise.race([
+          Promise.allSettled(images.map(image => image.decode())),
+          new Promise(resolve => setTimeout(resolve, 3000)),
+        ]);
+        return true;
+      })()`);
       if (format === 'print') {
         await new Promise((resolve, reject) => window.webContents.print({ printBackground: true }, (success, reason) => {
           if (success || reason === 'Print job canceled') resolve();
@@ -175,10 +184,18 @@ function createConversion({ assets, userDataPath }) {
       const size = await window.webContents.executeJavaScript('({ width: document.documentElement.scrollWidth, height: document.documentElement.scrollHeight })');
       if (size.height > 16384 || size.width * size.height > 25000000) throw new Error('文档过长，无法导出为单张图片。可导出为 PDF。');
       window.setContentSize(size.width, size.height);
-      await window.webContents.executeJavaScript('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve(true))))');
-      const image = await window.webContents.capturePage({ x: 0, y: 0, ...size }, { stayHidden: true });
-      if (image.isEmpty()) throw new Error('无法捕获文档图像。');
-      return image.toPNG();
+      let failure;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        // The offscreen compositor may replace its surface just after a resize.
+        await window.webContents.executeJavaScript('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve(true))))');
+        try {
+          const image = await window.webContents.capturePage({ x: 0, y: 0, ...size }, { stayHidden: true });
+          if (!image.isEmpty()) return image.toPNG();
+        } catch (error) {
+          failure = error;
+        }
+      }
+      throw new Error('无法捕获文档图像。', { cause: failure });
     } finally {
       if (!window.isDestroyed()) window.destroy();
       await fs.rm(temporary, { recursive: true, force: true });
@@ -271,6 +288,7 @@ function createConversion({ assets, userDataPath }) {
     }
     destination = path.resolve(destination);
     if (documentPath && path.resolve(documentPath) === destination) throw new Error('导出路径与原文档相同。请选择不同的文件名。');
+    let missingImages = 0;
     if (format === 'html' || format === 'html-plain') {
       const body = await assets.embedLocalAssets(markup);
       await atomicWrite(destination, Buffer.from(htmlDocument(body, title, { options, plain: format === 'html-plain' })));
@@ -285,32 +303,49 @@ function createConversion({ assets, userDataPath }) {
         const pandocOptions = { cwd: documentPath ? path.dirname(documentPath) : app.getPath('documents'), executable: options.pandocPath };
         let reader = markdownReader;
         let source = text ?? '';
+        const formatName = format === 'custom' ? options.writer : writer;
+        const writerName = formatName?.split(/[+-]/, 1)[0]?.toLowerCase();
         const toc = /^(?: {0,3})\[TOC\][ \t]*$/im.test(source);
         if (toc) source = source.replace(/^(?: {0,3})\[TOC\][ \t]*$/gim, '');
         await fs.writeFile(input, source, 'utf8');
-        if (['docx', 'epub'].includes(format)) {
-          const images = await preparePandocDiagrams(html, diagramSources, temporary, options);
-          const mathFence = /(?:`{3,}|~{3,})[ \t]*(?:math\b|\{[^\r\n}]*\.math(?=[ \t}]))/;
-          if (images.size || source.includes('$`') || mathFence.test(source)) {
-            const parsed = path.join(temporary, 'document.json');
-            await usePandoc(['--from', reader, '--to', 'json', '--output', parsed, input], pandocOptions);
-            const document = JSON.parse(await fs.readFile(parsed, 'utf8'));
+        const embedImages = imageWriters.has(writerName) && /!\[|<img\b|<source\b/i.test(source);
+        const normalizeDiagrams = format === 'docx' || format === 'epub';
+        const images = normalizeDiagrams ? await preparePandocDiagrams(html, diagramSources, temporary, options) : new Map();
+        const mathFence = /(?:`{3,}|~{3,})[ \t]*(?:math\b|\{[^\r\n}]*\.math(?=[ \t}]))/;
+        const normalizeMath = normalizeDiagrams && (source.includes('$`') || mathFence.test(source));
+        if (embedImages || images.size || normalizeMath) {
+          const parsed = path.join(temporary, 'document.json');
+          await usePandoc(['--from', reader, '--to', 'json', '--output', parsed, input], pandocOptions);
+          let document = JSON.parse(await fs.readFile(parsed, 'utf8'));
+          if (embedImages) {
+            ({ document, missingImages } = await normalizePandocMedia(document, {
+              assets, documentPath, rootPath: options.imageRoot, allowRemoteMedia: options.allowRemoteMedia, writer: writerName, temporary,
+              parseHtml: async markup => {
+                const fragment = path.join(temporary, 'images.html');
+                const parsedFragment = path.join(temporary, 'images.json');
+                await fs.writeFile(fragment, markup, 'utf8');
+                await usePandoc(['--sandbox', '--from', 'html+raw_html', '--to', 'json', '--output', parsedFragment, fragment], pandocOptions);
+                return JSON.parse(await fs.readFile(parsedFragment, 'utf8')).blocks;
+              },
+            }));
+          }
+          if (normalizeDiagrams) {
             document.blocks = normalizePandocBlocks(document.blocks, images);
             for (const [key, value] of Object.entries(document.meta)) {
               document.meta[key] = normalizePandocBlocks(value, images);
             }
-            await fs.writeFile(parsed, JSON.stringify(document), 'utf8');
-            input = parsed;
-            reader = 'json';
           }
+          await fs.writeFile(parsed, JSON.stringify(document), 'utf8');
+          input = parsed;
+          reader = 'json';
         }
-        const formatName = format === 'custom' ? options.writer : writer;
         const args = ['--from', reader, '--standalone'];
         if (formatName) args.push('--to', formatName);
         if (options.referenceDocument && ['docx', 'odt'].includes(format)) args.push('--reference-doc', options.referenceDocument);
         if (options.template) args.push('--template', options.template);
         if (options.toc || toc) args.push('--toc');
-        if (format === 'revealjs') args.push('--embed-resources', '--variable', `revealjs-url=${options.revealjsUrl || await revealRoot()}`);
+        if (htmlWriters.has(writerName)) args.push('--embed-resources');
+        if (writerName === 'revealjs') args.push('--variable', `revealjs-url=${options.revealjsUrl || await revealRoot()}`);
         if (Array.isArray(options.args) && options.args.every((item) => typeof item === 'string')) args.push(...options.args);
         args.push('--output', output, input);
         await usePandoc(args, pandocOptions);
@@ -321,7 +356,7 @@ function createConversion({ assets, userDataPath }) {
     }
     if (options.reveal) shell.showItemInFolder(destination);
     if (options.open) await shell.openPath(destination);
-    return { path: destination };
+    return { path: destination, missingImages };
   }
 
   return { exportDocument, importDocument };
