@@ -153,8 +153,9 @@ a { color: var(--accent-ink); }
 .editor-frame .editor-live .vditor-reset li > p { margin-bottom: .18em; }
 .editor-frame .vditor-reset ul, .editor-frame .vditor-reset ol, .read-body ol, .read-body ul { padding-left: 1.6em; margin: .36em 0 .92em; }
 .editor-frame .vditor-reset table, .read-body table, .editor-frame .editor-preview table {
-  width: 100%; display: table; font-size: .9em; border-collapse: collapse; margin: .55em 0 1.1em;
+  width: 100%; font-size: .9em; border-collapse: collapse; margin: .55em 0 1.1em;
 }
+.editor-frame .vditor-reset table:not([data-sujian-wide-table]), .read-body table:not([data-sujian-wide-table]) { display: table; }
 .editor-frame .vditor-reset table tr, .read-body table tr, .editor-frame .editor-preview table tr { background: transparent; }
 .editor-frame .vditor-reset th, .editor-frame .vditor-reset td, .read-body th, .read-body td, .editor-frame .editor-preview th, .editor-frame .editor-preview td {
   padding: 6px 12px; border: 1px solid var(--border);

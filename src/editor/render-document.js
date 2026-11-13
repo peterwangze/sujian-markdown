@@ -1,6 +1,7 @@
 import DOMPurify from 'dompurify';
 import Vditor from 'vditor';
 import editorStyles from 'vditor/dist/index.css?inline';
+import contentLayout from './content-layout.css?inline';
 import { resolveTheme, themeDeclarations } from '../theme/themes.js';
 import { unwrapGithubMath } from './github-math.js';
 import { normalizeFenceLanguagesForPreview } from './fence-info.js';
@@ -462,8 +463,12 @@ export async function renderDocument(markdown, {
   const fontSize = Number.isFinite(typography?.fontSize) ? Math.min(36, Math.max(12, typography.fontSize)) : 16;
   const lineHeight = Number.isFinite(typography?.lineHeight) ? Math.min(2.4, Math.max(1.25, typography.lineHeight)) : 1.7;
   const paletteCss = `:root{${themeDeclarations(appearance)}--export-font-size:${fontSize}px;--export-line-height:${lineHeight};}`;
-  const printCss = '@media print { main { margin: 0; padding: 0; max-width: none; } }';
-  const styles = (styled ? editorStyles + paletteCss + documentCss + codeCss + printCss : '') + mathCss;
+  const printCss = `@media print {
+    main { margin: 0; padding: 0; max-width: none; }
+    #write pre, #write pre > code { white-space: pre-wrap; overflow-wrap: anywhere; }
+    #write .katex-display > .katex { white-space: normal; }
+  }`;
+  const styles = (styled ? editorStyles + contentLayout + paletteCss + documentCss + codeCss + printCss : '') + mathCss;
   const stylesheet = styles ? `<style>${styles.replace(/<\/style/gi, '<\\/style')}</style>` : '';
   const media = options.allowRemoteMedia === false ? 'data: blob: file: sujian-asset:' : 'data: blob: https: http: file: sujian-asset:';
   const csp = `script-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; style-src 'unsafe-inline'; font-src data:; img-src ${media}; media-src ${media}`;

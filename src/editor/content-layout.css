@@ -1,0 +1,34 @@
+.vditor-reset table :is(th, td) {
+  /* Limit how much a single long cell can influence automatic column sizing. */
+  max-width: 16em;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.vditor-reset table[data-sujian-wide-table] {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.vditor-reset pre,
+.vditor-reset .katex-display {
+  overflow-x: auto;
+}
+
+.vditor-reset span.language-math:has(> .katex) {
+  display: inline-block;
+  max-width: 100%;
+  overflow-x: auto;
+  vertical-align: middle;
+}
+
+.vditor-reset :is(kbd, [data-sujian-inline-html="kbd"]) {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.vditor-reset .markdown-diagram svg {
+  max-width: 100%;
+  height: auto;
+}

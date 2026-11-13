@@ -28,6 +28,8 @@ import { indentSource, sourceKeys } from './source-keys.js';
 import { sourceSpellcheckExclusions } from './source-spellcheck.js';
 import { highlightCode, isLocalImage, loadVendorScript, markdownOptions, renderLegacyDiagram, renderLiveGithubMath, renderPreview, vendorRoot } from './render-document.js';
 import './editor.css';
+import './content-layout.css';
+import { observeWideTables } from './wide-tables.js';
 
 const nativeCommands = ['bold', 'italic', 'strike', 'inline-code', 'quote', 'list', 'ordered-list', 'check', 'indent', 'outdent', 'undo', 'redo'];
 const lineCommands = ['quote', 'list', 'ordered-list', 'check'];
@@ -448,6 +450,7 @@ export function Editor({
     let alive = true;
     let instance;
     let observer;
+    let tables;
     let refreshHtml;
     const flush = (event) => {
       if (event.isComposing) return;
@@ -591,6 +594,7 @@ export function Editor({
           rich.current = instance;
           syncRich();
           const editable = instance.vditor.ir.element;
+          tables = observeWideTables(editable);
           editable.setAttribute('aria-label', 'Markdown 即时编辑');
           editable.setAttribute('aria-description', '先按 Escape，再按 Tab 或 Shift+Tab 可移出编辑区。');
           editable.spellcheck = latest.current.spellcheck;
@@ -606,6 +610,7 @@ export function Editor({
             resolveLiveAssets();
             refreshHtml();
             renderLiveGithubMath(editable);
+            tables.refresh();
             for (const preview of normalizeLiveFencePreviews(editable, currentFenceSources())) {
               void highlightCode(preview, latest.current.theme, true).catch(() => {});
             }
@@ -634,6 +639,7 @@ export function Editor({
       host.removeEventListener('keydown', editKeys, true);
       document.removeEventListener('selectionchange', selectionChange);
       observer?.disconnect();
+      tables?.disconnect();
       liveDetails.current?.dispose();
       liveDetails.current = null;
       if (rich.current) {
@@ -739,17 +745,20 @@ export function Editor({
     if (mode !== 'split' && mode !== 'read') return;
     const preview = previewHost.current;
     let alive = true;
+    let tables;
     const timer = setTimeout(() => {
       renderPreview(value, { resolveImage: latest.current.resolveImage ?? latest.current.assetUrl, theme, allowRemoteMedia }).then((article) => {
         if (!alive) return;
         setPreviewError('');
         preview.replaceChildren(article);
+        tables = observeWideTables(article);
       }).catch((error) => {
         if (alive) setPreviewError(error.message);
       });
     }, 180);
     return () => {
       alive = false;
+      tables?.disconnect();
       clearTimeout(timer);
     };
   }, [value, mode, docId, theme, allowRemoteMedia, resolveImage, assetUrl]);
