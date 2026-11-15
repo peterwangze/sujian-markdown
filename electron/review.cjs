@@ -158,4 +158,4 @@ async function readGitBaseline({ documentPath, ref = 'HEAD' }) {
   }
 }
 
-module.exports = { applicationArguments, materializeCommand, parseCommand, readCandidate, readGitBaseline, readReviewSnapshot };
+module.exports = { applicationArguments, findGit, gitEnvironment, materializeCommand, parseCommand, readCandidate, readGitBaseline, readReviewSnapshot };

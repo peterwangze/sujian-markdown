@@ -6,7 +6,7 @@
 
 <p align="center"><strong>写作时看见排版，改稿时看清变化。</strong></p>
 <p align="center">给长文、技术文档和改稿用的本地 Markdown 编辑器。边写边看排版，用键盘找到文件和命令，再把确认过的改动交付出去。</p>
-<p align="center"><a href="https://github.com/peterwangze/sujian-markdown/releases/tag/v1.4.11"><strong>下载 v1.4.11 离线安装包</strong></a> · Windows / macOS / Linux</p>
+<p align="center"><a href="https://github.com/peterwangze/sujian-markdown/releases/tag/v1.4.12"><strong>下载 v1.4.12 离线安装包</strong></a> · Windows / macOS / Linux</p>
 
 ## 用顺手的方式写作
 
@@ -83,7 +83,13 @@ AI 生成由你选择的外部工具完成。素笺在本机进行审阅、比�
 
 ## 从 Git 和终端进入素笺
 
-安装本机 Git 后，可在已打开的仓库文档中使用 **Git 比较**，读取 `HEAD`、分支、标签或提交版本作对照。外部工具也可以直接打开文档的指定行，或把候选稿交给审阅界面。以下以 Linux DEB 为例。
+安装本机 Git 并配置提交身份后，可以在文件树右击工作区或独立子目录，选择 **Git 版本管理…**。点击 **初始化 Git 仓库**，即可在所选目录建立本地仓库。子目录建立仓库后，可直接 **打开为工作区**。
+
+要保存一版文档，在同一个面板核对待提交文件、填写提交说明，然后点击 **暂存并提交**。仓内有未保存的文档时，可先 **保存后刷新**。提交完成后，继续修改文档，随时用 **比较当前文档与 HEAD** 打开审阅。也可以在 **审阅修订稿 → Git 比较** 中选择其他分支、标签或提交。
+
+<img src="docs/images/sujian-git-workspace.png" alt="Git 版本管理显示待提交的三个文件和提交说明，可以用暂存并提交建立第一版。" width="600">
+
+外部工具也可以直接打开文档的指定行，或把候选稿交给审阅界面。以下以 Linux DEB 为例。
 
 ```sh
 /opt/Sujian/sujian open "docs/验收记录.md" --line 12
@@ -96,15 +102,15 @@ Windows 使用安装目录中的 `Sujian.exe`。macOS 使用 `/Applications/Suji
 
 | 系统 | x64 / Intel | ARM64 / Apple 芯片 |
 | --- | --- | --- |
-| Windows | [EXE](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.11/Sujian-1.4.11-win-x64.exe) | [EXE](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.11/Sujian-1.4.11-win-arm64.exe) |
-| macOS 13+ | [DMG](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.11/Sujian-1.4.11-mac-x64.dmg) | [DMG](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.11/Sujian-1.4.11-mac-arm64.dmg) |
-| Linux | [AppImage](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.11/Sujian-1.4.11-linux-x86_64.AppImage) · [DEB](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.11/Sujian-1.4.11-linux-amd64.deb) | [AppImage](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.11/Sujian-1.4.11-linux-arm64.AppImage) · [DEB](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.11/Sujian-1.4.11-linux-arm64.deb) |
+| Windows | [EXE](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.12/Sujian-1.4.12-win-x64.exe) | [EXE](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.12/Sujian-1.4.12-win-arm64.exe) |
+| macOS 13+ | [DMG](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.12/Sujian-1.4.12-mac-x64.dmg) | [DMG](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.12/Sujian-1.4.12-mac-arm64.dmg) |
+| Linux | [AppImage](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.12/Sujian-1.4.12-linux-x86_64.AppImage) · [DEB](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.12/Sujian-1.4.12-linux-amd64.deb) | [AppImage](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.12/Sujian-1.4.12-linux-arm64.AppImage) · [DEB](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.12/Sujian-1.4.12-linux-arm64.deb) |
 
 - **Windows** 双击 EXE 安装。安装包未做 Authenticode 签名。ARM64 版的 Pandoc 使用 Windows 11 的 x64 仿真。
 - **macOS** 挂载 DMG 后，将素笺拖到“应用程序”。此版本采用临时签名，首次启动时可能需要在“隐私与安全性”中允许打开。[Apple 打开应用说明](https://support.apple.com/en-us/102445)
 - **Linux** 赋予 AppImage 执行权限后打开，或通过软件包管理器安装 DEB。运行依赖发行版提供的 Chromium 系统库。
 
-安装包包含应用运行时、渲染资源、字体与 Pandoc。六种系统与架构组合均通过成品启动检查。[SHA-256 清单](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.11/SHA256SUMS.txt) · [构建与验证记录](https://github.com/peterwangze/sujian-markdown/actions/workflows/release.yml)
+安装包包含应用运行时、渲染资源、字体与 Pandoc。六种系统与架构组合均通过成品启动检查。[SHA-256 清单](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.12/SHA256SUMS.txt) · [构建与验证记录](https://github.com/peterwangze/sujian-markdown/actions/workflows/release.yml)
 
 ## 开发与兼容范围
 

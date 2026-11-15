@@ -9,6 +9,7 @@ const { createConversion } = require('./conversion.cjs');
 const { documentExtension, getDocument, pathKey, saveDocument } = require('./documents.cjs');
 const { createFileOperations } = require('./file-operations.cjs');
 const { acceptedExtensions: fontExtensions, createFontStore, fontRoute } = require('./fonts.cjs');
+const { commitGitWorkspace, initGitWorkspace, inspectGitWorkspace } = require('./git-workspace.cjs');
 const { createStorage } = require('./storage.cjs');
 const { createWatcher } = require('./watcher.cjs');
 const { findDocuments, listDirectory, searchDirectory } = require('./workspace.cjs');
@@ -322,6 +323,9 @@ function installIpc({ assets, conversion, fonts, storage, operations }) {
     requireOpenDocument(state, options?.documentPath);
     return readGitBaseline(options);
   });
+  handle('git-workspace-status', (_state, directory) => inspectGitWorkspace(directory));
+  handle('git-workspace-init', (_state, directory) => initGitWorkspace(directory));
+  handle('git-workspace-commit', (_state, options) => commitGitWorkspace(options));
   handle('save-file', async (state, options) => {
     let filePath = options.path;
     let expectedHash = options.expectedHash;

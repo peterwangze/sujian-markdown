@@ -9,6 +9,7 @@ import { Toolbar } from './ui/Toolbar.jsx'
 import { ExportDialog, FindBar, FolderSearch, GoToLine, NewFileDialog, QuickOpen, Recovery, Settings } from './ui/Dialogs.jsx'
 import { CommandPalette } from './ui/CommandPalette.jsx'
 import { DocumentContextMenu } from './ui/DocumentContextMenu.jsx'
+import { GitWorkspaceDialog } from './ui/GitWorkspaceDialog.jsx'
 import { desktop, native } from './workspace/desktop.js'
 import { imageReferenceReplacement, listImageReferences, replaceImageReferences } from './workspace/image-reference.js'
 import { headings, localImageSources, MAX_LIVE_LENGTH, slug, updateImageSources, wordCount } from './workspace/text.js'
@@ -27,6 +28,12 @@ const fileActions = [
   ['reveal', '在文件管理器中显示'], ['undo', '撤销文件操作'],
 ]
 const leaf = path => path?.split(/[\\/]/).filter(Boolean).at(-1) ?? ''
+
+function pathWithinFolder(file, folder) {
+  if (!file || !folder) return false
+  const pathKey = value => desktop.platform === 'win32' ? value.replaceAll('\\', '/').toLowerCase() : value
+  return pathKey(file).startsWith(pathKey(folder).replace(/\/+$/, '') + '/')
+}
 
 function resolveLink(base, href) {
   const [target, anchor] = href.split('#', 2).map(part => {
@@ -323,13 +330,40 @@ export default function App() {
     return true
   }
 
-  function openReview(doc, initialCandidate) {
+  function openReview(doc, initialCandidate, initialGitBase) {
     if (!doc) return
     const currentText = activeId.current === doc.id ? flushEditor() : undefined
     setDialog({
       type: 'review', docId: doc.id, baseText: currentText ?? doc.text,
-      expectedPath: doc.path, initialCandidate, requestId: crypto.randomUUID(),
+      expectedPath: doc.path, initialCandidate, initialGitBase, requestId: crypto.randomUUID(),
     })
+  }
+
+  function unsavedGitDocuments(root) {
+    return docs.map(doc => workspace.getDocument(doc.id)).filter(doc =>
+      pathWithinFolder(doc?.path, root) && (isDirty(doc) || doc.conflict))
+  }
+
+  async function saveGitDocuments(root) {
+    flushEditor()
+    for (const doc of unsavedGitDocuments(root)) {
+      if (doc.conflict || !await workspace.save(doc.id, { quiet: true })) {
+        throw new Error(`请先处理「${doc.name}」的磁盘冲突。`)
+      }
+    }
+  }
+
+  async function commitGitChanges(options) {
+    flushEditor()
+    if (unsavedGitDocuments(options.directory).length) throw new Error('请先保存仓库内的文档，再提交。')
+    return desktop.commitGitWorkspace(options)
+  }
+
+  async function compareGitHead(root) {
+    const doc = workspace.getDocument(activeId.current)
+    if (!pathWithinFolder(doc?.path, root)) throw new Error('请先打开该仓库中的文档。')
+    const baseline = await desktop.readGitBaseline({ documentPath: doc.path, ref: 'HEAD' })
+    openReview(workspace.getDocument(doc.id), undefined, baseline)
   }
 
   async function collectDocumentImages(doc, item) {
@@ -616,7 +650,8 @@ export default function App() {
 
   function contextGroups(item) {
     if (item.kind === 'directory') return [[...(desktop.createFile ? [['create-file', '新建文件…']] : []), ['mkdir', '新建子文件夹'],
-      settings.pinned.includes(item.path) ? ['unpin', '取消固定'] : ['pin', '固定文件夹']], fileActions]
+      settings.pinned.includes(item.path) ? ['unpin', '取消固定'] : ['pin', '固定文件夹']],
+      ...(item.path && desktop.gitWorkspaceStatus ? [[['git-workspace', 'Git 版本管理…']]] : []), fileActions]
     const documentActions = [['review', '审阅修订稿']]
     if (contextDoc?.reviewUndo && contextDoc.text === contextDoc.reviewUndo.after) documentActions.push(['undo-review', '撤销本次审阅'])
     if (item.path && desktop.collectImages) documentActions.push(['collect-document-images', '收拢图片到文档资源目录'])
@@ -671,6 +706,11 @@ export default function App() {
     dismissContext(true)
     if (key === 'collect-document-images') {
       run(() => collectDocumentImages(doc, item))
+      return
+    }
+    if (key === 'git-workspace' && item.kind === 'directory' && item.path) {
+      flushEditor()
+      setDialog({ type: 'git-workspace', directory: item.path })
       return
     }
     if (key === 'review') {
@@ -801,8 +841,13 @@ export default function App() {
     {message && <div className={'toast ' + (message.error ? 'error' : '')} role={message.error ? 'alert' : 'status'}>
       {message.error ? <AlertTriangle size={17}/> : <CircleCheck size={17}/>} {message.text}
     </div>}
+    {dialog?.type === 'git-workspace' && <GitWorkspaceDialog directory={dialog.directory} workspacePath={settings.workspace}
+      inspect={desktop.gitWorkspaceStatus} initialize={desktop.initGitWorkspace} commit={commitGitChanges}
+      unsaved={unsavedGitDocuments} saveDocuments={saveGitDocuments}
+      compareCurrent={pathWithinFolder(active?.path, dialog.directory) ? compareGitHead : null}
+      openWorkspace={root => { configure({ workspace: root }); closeDialog() }} onClose={closeDialog}/>}
     {reviewDoc && <Suspense fallback={null}>
-      <ReviewDialog key={dialog.requestId} name={reviewDoc.name} baseText={dialog.baseText} currentText={reviewDoc.text}
+      <ReviewDialog key={dialog.requestId} name={reviewDoc.name} baseText={dialog.baseText} currentText={reviewDoc.text} initialGitBase={dialog.initialGitBase}
         diskText={reviewDoc.conflict?.document?.text ?? null} diskConflict={!!reviewDoc.conflict}
         initialCandidate={dialog.initialCandidate}
         compareGit={reviewDoc.path && desktop.readGitBaseline ? ref => desktop.readGitBaseline({ documentPath: reviewDoc.path, ref }) : undefined}

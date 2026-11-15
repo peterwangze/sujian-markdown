@@ -1,0 +1,12 @@
+.git-workspace-modal { width: min(620px, calc(100vw - 28px)); }
+.git-workspace-path { font-family: var(--mono); font-size: .88em; }
+.git-workspace-branch { display: flex; align-items: center; gap: 8px; }
+.git-workspace-branch span { color: var(--muted); font-family: var(--mono); font-size: .86em; }
+.git-workspace-error { color: var(--danger-ink, var(--accent-ink)); overflow-wrap: anywhere; }
+.git-workspace-changes, .git-workspace-pending ul { max-height: 26vh; overflow: auto; }
+.git-workspace-changes { padding: 0; list-style: none; border: 1px solid var(--border); border-radius: 6px; }
+.git-workspace-changes li { display: flex; gap: 10px; padding: 7px 10px; }
+.git-workspace-changes li + li { border-top: 1px solid var(--border); }
+.git-workspace-changes span { min-width: 3em; flex: none; color: var(--muted); font-size: .88em; }
+.git-workspace-changes code { overflow-wrap: anywhere; }
+.git-workspace-actions { flex-wrap: wrap; }

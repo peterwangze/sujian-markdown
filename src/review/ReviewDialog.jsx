@@ -87,15 +87,15 @@ function RenderedPane({ title, text, theme }) {
   </section>
 }
 
-export function ReviewDialog({ name, baseText, currentText, diskText, diskConflict, initialCandidate,
+export function ReviewDialog({ name, baseText, currentText, diskText, diskConflict, initialCandidate, initialGitBase,
   compareGit, chooseCandidate, copyBase, theme, onApply, onClose }) {
   const [draft, setDraft] = useState('')
   const [candidate, setCandidate] = useState(() => normalizeCandidate(initialCandidate ?? null))
   const [importedBase, setImportedBase] = useState(null)
   const [copied, setCopied] = useState(false)
-  const [gitBase, setGitBase] = useState(null)
+  const [gitBase, setGitBase] = useState(initialGitBase ?? null)
   const [gitRef, setGitRef] = useState('HEAD')
-  const [mode, setMode] = useState('candidate')
+  const [mode, setMode] = useState(initialGitBase ? 'git' : 'candidate')
   const [view, setView] = useState('source')
   const [previewAccepted, setPreviewAccepted] = useState(false)
   const [decisions, setDecisions] = useState({})
