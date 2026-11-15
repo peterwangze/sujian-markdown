@@ -120,11 +120,12 @@ export function useWorkspace(notify, beforeClose) {
     else amend(doc.id, { ...document, savedText: document.text, conflict: null })
   }, [amend])
 
-  const replaceReviewedText = useCallback(async (id, { expectedText, expectedPath, text, undo = false }) => {
+  const replaceDocumentText = useCallback(async (id, { expectedText, expectedPath, text, review, isCurrent }) => {
     const check = () => {
+      if (isCurrent && !isCurrent()) return null
       const doc = getDocument(id)
       if (!doc || doc.path !== expectedPath || doc.text !== expectedText) {
-        throw new Error('当前文档已变动，请重新核对修订。')
+        throw new Error('当前文档已变动，请重新开始操作。')
       }
       if (doc.conflict || closing.current.has(id) || pendingSaves.current.has(id)) {
         throw new Error('文档正在保存、关闭或存在磁盘冲突，请处理后再试。')
@@ -132,18 +133,24 @@ export function useWorkspace(notify, beforeClose) {
       return doc
     }
     const before = check()
+    if (!before) return false
     if (before.path && desktop.readReviewSnapshot) {
       const disk = await desktop.readReviewSnapshot(before.path)
       const current = check()
+      if (!current) return false
       if (!disk || disk.hash !== current.hash) {
         applyDiskChange(current.path, disk)
-        throw new Error('磁盘上的文档已变动，请重新核对修订。')
+        throw new Error('磁盘上的文档已变动，请重新开始操作。')
       }
     }
     if (expectedText === text) return false
-    amend(id, { text, reviewUndo: undo ? null : { before: expectedText, after: text } })
+    const reviewUndo = review ? { before: expectedText, after: text } : null
+    amend(id, { text, reviewUndo })
     return true
   }, [amend, applyDiskChange, getDocument])
+
+  const replaceReviewedText = useCallback((id, { undo, ...edit }) =>
+    replaceDocumentText(id, { ...edit, review: !undo }), [replaceDocumentText])
 
   const runDraft = useCallback((id, work) => {
     const queue = (draftTasks.current.get(id) ?? Promise.resolve()).catch(() => {}).then(work)
@@ -371,7 +378,7 @@ export function useWorkspace(notify, beforeClose) {
 
   return {
     docs: state.docs, active: state.docs.find(doc => doc.id === state.activeId), settings, ready, saving, recoverable,
-    select, configure, add, append, amend, close, reopen, openFiles, openPath, getDocument, getDocumentByPath, replaceReviewedText, save, resolveConflict, recover,
+    select, configure, add, append, amend, close, reopen, openFiles, openPath, getDocument, getDocumentByPath, replaceDocumentText, replaceReviewedText, save, resolveConflict, recover,
     removeRecovery: async id => { await discardDraft(id); setRecoverable(items => items.filter(item => item.id !== id)) },
   }
 }

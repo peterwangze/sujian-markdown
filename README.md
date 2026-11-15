@@ -6,7 +6,7 @@
 
 <p align="center"><strong>写作时看见排版，改稿时看清变化。</strong></p>
 <p align="center">给长文、技术文档和改稿用的本地 Markdown 编辑器。边写边看排版，用键盘找到文件和命令，再把确认过的改动交付出去。</p>
-<p align="center"><a href="https://github.com/peterwangze/sujian-markdown/releases/tag/v1.4.10"><strong>下载 v1.4.10 离线安装包</strong></a> · Windows / macOS / Linux</p>
+<p align="center"><a href="https://github.com/peterwangze/sujian-markdown/releases/tag/v1.4.11"><strong>下载 v1.4.11 离线安装包</strong></a> · Windows / macOS / Linux</p>
 
 ## 用顺手的方式写作
 
@@ -73,9 +73,11 @@ AI 生成由你选择的外部工具完成。素笺在本机进行审阅、比�
 - **把多份文档放在手边。** 用标签页切换文件，从大纲跳到章节，在工作区里跨文件搜索。长文档自动进入源码模式，便于滚动和查找。
 - **保住正在写的内容。** 重启后可以从侧栏恢复未保存的草稿。磁盘文件有外部改动时，可以对照磁盘版本，并把正在编辑的内容另存成副本。
 - **直接引用已有插图。** 从文件管理器复制、拖入或选取图片时，素笺引用原文件，能用相对路径时就写相对路径。粘贴时也会优先采用剪贴板提供的有效图片地址。只有截图等缺少可用地址的图像数据需要落盘，已保存文档默认写入 `文档名.assets`，也可在 **设置 → 文件与资源** 指定目录。
-- **交付 Markdown 前收拢插图。** 保存文档后，右击其他目录里的图片或已加载的网络图片，选 **复制到文档资源目录**，再保存文档。素笺复制图像并更新本次点击的引用。交付时把文档和资源目录一起发送。
+- **把整篇 Markdown 的插图一起交付。** 在文件树或标签页右击已保存的文档，选择 **收拢图片到文档资源目录**。素笺按原图去重，为可读的图片写入相对引用，并列出未能处理的地址。开启 **显示网络图片** 后也可收拢网络图。点击结果窗口中的 **保存文档**，再把 Markdown 和资源目录一起发送。需要逐张处理时，可继续使用图片右键菜单里的 **复制到文档资源目录**。
 - **发出带图的成品，收件人可以直接打开。** PDF、HTML、PNG、Word、ODT、RTF、EPUB 和 Reveal.js 导出会带上可读取的本地图片。相对路径、绝对路径、`file://` 和设置中的图片根路径都可用于找图，图片缺失时会提示。导出 Markdown 时保留原有链接，交付源码时请同时提供引用的资源。
 - **断网也能导出成品。** 本地公式、Mermaid、Flowchart.js 和 Graphviz 图表可离线渲染。包含 GitHub 行内公式和引用、清单内图表的文档可导出为 PDF、HTML、Word 或 EPUB。安装包内置 Pandoc，也支持 PNG 长图和 Reveal.js 幻灯片等格式。
+
+<img src="docs/images/sujian-image-batch-collection.png" alt="图片收拢结果显示已复制 3 张图片、更新 8 处引用，并列出未找到的原图片地址。" width="460">
 
 ![素笺深墨主题下的分栏预览。左边是大纲和 Markdown 源码，右边渲染了公式与 Mermaid 流程图。](docs/images/sujian-split.png)
 
@@ -94,15 +96,15 @@ Windows 使用安装目录中的 `Sujian.exe`。macOS 使用 `/Applications/Suji
 
 | 系统 | x64 / Intel | ARM64 / Apple 芯片 |
 | --- | --- | --- |
-| Windows | [EXE](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.10/Sujian-1.4.10-win-x64.exe) | [EXE](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.10/Sujian-1.4.10-win-arm64.exe) |
-| macOS 13+ | [DMG](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.10/Sujian-1.4.10-mac-x64.dmg) | [DMG](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.10/Sujian-1.4.10-mac-arm64.dmg) |
-| Linux | [AppImage](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.10/Sujian-1.4.10-linux-x86_64.AppImage) · [DEB](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.10/Sujian-1.4.10-linux-amd64.deb) | [AppImage](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.10/Sujian-1.4.10-linux-arm64.AppImage) · [DEB](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.10/Sujian-1.4.10-linux-arm64.deb) |
+| Windows | [EXE](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.11/Sujian-1.4.11-win-x64.exe) | [EXE](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.11/Sujian-1.4.11-win-arm64.exe) |
+| macOS 13+ | [DMG](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.11/Sujian-1.4.11-mac-x64.dmg) | [DMG](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.11/Sujian-1.4.11-mac-arm64.dmg) |
+| Linux | [AppImage](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.11/Sujian-1.4.11-linux-x86_64.AppImage) · [DEB](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.11/Sujian-1.4.11-linux-amd64.deb) | [AppImage](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.11/Sujian-1.4.11-linux-arm64.AppImage) · [DEB](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.11/Sujian-1.4.11-linux-arm64.deb) |
 
 - **Windows** 双击 EXE 安装。安装包未做 Authenticode 签名。ARM64 版的 Pandoc 使用 Windows 11 的 x64 仿真。
 - **macOS** 挂载 DMG 后，将素笺拖到“应用程序”。此版本采用临时签名，首次启动时可能需要在“隐私与安全性”中允许打开。[Apple 打开应用说明](https://support.apple.com/en-us/102445)
 - **Linux** 赋予 AppImage 执行权限后打开，或通过软件包管理器安装 DEB。运行依赖发行版提供的 Chromium 系统库。
 
-安装包包含应用运行时、渲染资源、字体与 Pandoc。六种系统与架构组合均通过成品启动检查。[SHA-256 清单](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.10/SHA256SUMS.txt) · [构建与验证记录](https://github.com/peterwangze/sujian-markdown/actions/workflows/release.yml)
+安装包包含应用运行时、渲染资源、字体与 Pandoc。六种系统与架构组合均通过成品启动检查。[SHA-256 清单](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.11/SHA256SUMS.txt) · [构建与验证记录](https://github.com/peterwangze/sujian-markdown/actions/workflows/release.yml)
 
 ## 开发与兼容范围
 

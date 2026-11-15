@@ -390,6 +390,7 @@ function installIpc({ assets, conversion, fonts, storage, operations }) {
   handle('save-image-as', ({ window }, options) => assets.saveImageAs(window, options, remoteMediaAllowed));
   handle('reveal-image', (_state, source) => assets.revealImage(source));
   handle('collect-image', ({ window }, options) => assets.collectImage(window, options, remoteMediaAllowed));
+  handle('collect-images', ({ window }, options) => assets.collectImages(window, options, remoteMediaAllowed));
   handle('finish-image-collection', (_state, token, keep) => assets.finishImageCollection(token, keep));
   handle('upload-images', (_state, options) => assets.uploadImages(options));
   handle('import-document', ({ window }, options) => conversion.importDocument(window, options));

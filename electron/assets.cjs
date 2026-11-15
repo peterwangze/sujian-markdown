@@ -105,6 +105,38 @@ function referencePath(documentPath, file) {
   return encodeMarkdownPath(relative);
 }
 
+function descendantPath(parent, file) {
+  const relative = path.relative(parent, file);
+  return relative && relative !== '..' && !relative.startsWith('..' + path.sep) && !path.isAbsolute(relative) ? relative : null;
+}
+
+async function portableAssetDirectory(documentPath, assetFolder) {
+  const parent = path.dirname(documentPath);
+  const fallback = path.join(parent, path.parse(documentPath).name + '.assets');
+  const configured = typeof assetFolder === 'string' && assetFolder ? path.resolve(parent, assetFolder) : fallback;
+  async function belongsToDocument(directory) {
+    const relative = descendantPath(parent, directory);
+    if (!relative) return false;
+    let current = parent;
+    // A directory symlink cannot carry its target when the document bundle is moved.
+    for (const part of relative.split(path.sep)) {
+      current = path.join(current, part);
+      try {
+        if (!(await fs.lstat(current)).isDirectory()) return false;
+      } catch (error) {
+        if (error.code === 'ENOENT') return true;
+        throw error;
+      }
+    }
+    return true;
+  }
+  if (await belongsToDocument(configured)) return { directory: configured, usedDefaultFolder: false };
+  if (configured === fallback || !await belongsToDocument(fallback)) {
+    throw new Error('无法使用文档旁的资源目录，请在设置中选择文档目录下的可用文件夹。');
+  }
+  return { directory: fallback, usedDefaultFolder: true };
+}
+
 function createAssets({ userDataPath, knownDocuments, storage }) {
   const unattached = path.join(userDataPath, 'assets');
   const pendingCollections = new Map();
@@ -189,6 +221,24 @@ function createAssets({ userDataPath, knownDocuments, storage }) {
     shell.showItemInFolder(await localImageFile(source));
   }
 
+  async function copyCollectedImage(directory, { local, bytes, filename }) {
+    const extension = path.extname(filename);
+    const stem = path.basename(filename, extension).replace(/[<>:"/\\|?*\x00-\x1f]/g, '-').slice(0, 80);
+    await fs.mkdir(directory, { recursive: true });
+    const destination = path.join(directory, `${stem}-${randomUUID().slice(0, 8)}${extension}`);
+    if (local) await fs.copyFile(local, destination, COPYFILE_EXCL);
+    else await fs.writeFile(destination, bytes, { flag: 'wx' });
+    return destination;
+  }
+
+  function pendingCollection(files) {
+    if (!files.length) return undefined;
+    const token = randomUUID();
+    pendingCollections.set(token, files);
+    setTimeout(() => pendingCollections.delete(token), 60_000).unref();
+    return token;
+  }
+
   async function collectImage(window, { documentPath, source, alt, assetFolder } = {}, allowRemote = false) {
     if (typeof documentPath !== 'string' || !knownDocuments.has(pathKey(documentPath))) {
       throw new Error('请先保存文档，再复制图片到文档资源目录。');
@@ -204,29 +254,98 @@ function createAssets({ userDataPath, knownDocuments, storage }) {
       local = await localImageFile(source);
       filename = path.basename(local);
       const realDirectory = await fs.realpath(directory).catch(() => directory);
-      const inside = path.relative(realDirectory, local);
-      if (inside && inside !== '..' && !inside.startsWith('..' + path.sep) && !path.isAbsolute(inside)) {
-        return { markdownPath: referencePath(documentPath, path.join(directory, inside)) };
-      }
+      const inside = descendantPath(realDirectory, local);
+      if (inside) return { markdownPath: referencePath(documentPath, path.join(directory, inside)) };
     }
 
-    const extension = path.extname(filename);
-    const stem = path.basename(filename, extension).replace(/[<>:"/\\|?*\x00-\x1f]/g, '-').slice(0, 80);
-    await fs.mkdir(directory, { recursive: true });
-    const destination = path.join(directory, `${stem}-${randomUUID().slice(0, 8)}${extension}`);
-    if (local) await fs.copyFile(local, destination, COPYFILE_EXCL);
-    else await fs.writeFile(destination, bytes, { flag: 'wx' });
-    const token = randomUUID();
-    pendingCollections.set(token, destination);
-    setTimeout(() => pendingCollections.delete(token), 60_000).unref();
-    return { markdownPath: referencePath(documentPath, destination), token };
+    const destination = await copyCollectedImage(directory, { local, bytes, filename });
+    return { markdownPath: referencePath(documentPath, destination), token: pendingCollection([destination]) };
+  }
+
+  async function collectImages(window, { documentPath, sources, rootPath, assetFolder } = {}, allowRemote = false) {
+    if (typeof documentPath !== 'string' || !knownDocuments.has(pathKey(documentPath))) {
+      throw new Error('请先保存文档，再收拢图片。');
+    }
+    if (!Array.isArray(sources) || sources.some(source => typeof source !== 'string')) {
+      throw new Error('无法识别要收拢的图片引用。');
+    }
+    const addresses = [...new Set(sources)].filter(source => !/^data:image\//i.test(source.trim()));
+    if (!addresses.length) return { replacements: [], failures: [], copied: 0, alreadyLocal: 0 };
+    const { directory, usedDefaultFolder } = await portableAssetDirectory(documentPath, assetFolder);
+    const realDirectory = await fs.realpath(directory).catch(() => directory);
+    const outcomes = new Array(addresses.length);
+    const created = [];
+    const alreadyLocal = new Set();
+    const lookups = new Map();
+    const copies = new Map();
+
+    function onlyOnce(cache, key, work) {
+      if (!cache.has(key)) cache.set(key, Promise.resolve().then(work));
+      return cache.get(key);
+    }
+
+    async function copy(payload) {
+      const file = await copyCollectedImage(directory, payload);
+      created.push(file);
+      return file;
+    }
+
+    async function resolveSource(source) {
+      const address = source.trim();
+      if (/^(?:https?:\/\/|\/\/)/i.test(address)) {
+        if (!allowRemote) throw new Error('未开启「显示网络图片」。');
+        const url = new URL(address.startsWith('//') ? 'https:' + address : address);
+        // The HTTP request does not include the fragment.
+        url.hash = '';
+        return onlyOnce(lookups, url.href, async () => {
+          const result = await remoteImageResponse(window, url.href);
+          result.url.hash = '';
+          const key = result.url.href;
+          if (copies.has(key)) await result.response.body?.cancel();
+          return onlyOnce(copies, key, async () => copy(await imagePayload(result)));
+        });
+      }
+      const local = await mediaFile({ documentPath, source: address, rootPath });
+      if (!local) throw new Error('找不到图片文件。');
+      if (!types.get(path.extname(local).toLowerCase())?.startsWith('image/')) throw new Error('文件不是受支持的图片。');
+      const stat = await fs.stat(local, { bigint: true });
+      const key = stat.ino ? `${stat.dev}:${stat.ino}` : pathKey(local);
+      const inside = descendantPath(realDirectory, local);
+      if (inside) {
+        alreadyLocal.add(key);
+        return path.join(directory, inside);
+      }
+      return onlyOnce(copies, key, () => copy({ local, filename: path.basename(local) }));
+    }
+
+    let cursor = 0;
+    async function worker() {
+      while (cursor < addresses.length) {
+        const index = cursor++;
+        const source = addresses[index];
+        try {
+          const file = await resolveSource(source);
+          outcomes[index] = { source, markdownPath: referencePath(documentPath, file) };
+        } catch (error) {
+          const reason = error.code ? '无法读取图片或写入文档资源目录。' : error.message;
+          outcomes[index] = { source, reason };
+        }
+      }
+    }
+    await Promise.all(Array.from({ length: Math.min(4, addresses.length) }, worker));
+    const replacements = outcomes.filter(outcome => outcome.markdownPath);
+    return {
+      replacements, failures: outcomes.filter(outcome => !outcome.markdownPath),
+      copied: created.length, alreadyLocal: alreadyLocal.size, usedDefaultFolder,
+      directory: replacements.length ? directory : undefined, token: pendingCollection(created),
+    };
   }
 
   async function finishImageCollection(token, keep) {
-    const destination = pendingCollections.get(token);
-    if (!destination) return;
+    const files = pendingCollections.get(token);
+    if (!files) return;
     pendingCollections.delete(token);
-    if (!keep) await fs.rm(destination, { force: true });
+    if (!keep) await Promise.all(files.map(file => fs.rm(file, { force: true })));
   }
 
   async function saveImageAs(window, { source, alt } = {}, allowRemote = false) {
@@ -397,7 +516,7 @@ function createAssets({ userDataPath, knownDocuments, storage }) {
     return sources.map((source, index) => ({ source, url: urls[index] }));
   }
 
-  return { collectImage, embedLocalAssets, finishImageCollection, handleRequest, importImage, mediaFile, referenceImage, resolveImage, revealImage, saveImageAs, uploadImages };
+  return { collectImage, collectImages, embedLocalAssets, finishImageCollection, handleRequest, importImage, mediaFile, referenceImage, resolveImage, revealImage, saveImageAs, uploadImages };
 }
 
 module.exports = { createAssets, scheme };

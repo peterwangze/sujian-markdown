@@ -202,6 +202,9 @@ a { color: var(--accent-ink); }
 .modal header { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
 .modal h2 { font-size: 18px; font-weight: 650; line-height: 1.3; margin: 0; }
 .modal-detail { margin: 8px 0 14px; color: var(--muted); overflow-wrap: anywhere; }
+.image-collection-failures { max-height: 28vh; overflow: auto; margin: 8px 0 14px; padding: 0 0 0 20px; }
+.image-collection-failures li { padding: 4px 2px; overflow-wrap: anywhere; }
+.image-collection-failures li span { display: block; color: var(--muted); font-size: .9em; }
 .modal footer { display: flex; justify-content: flex-end; align-items: center; gap: 7px; padding-top: 14px; }
 .modal footer > button, .primary, .danger, .small-button, .recover-row button { padding: 6px 11px; border: 1px solid var(--border); white-space: nowrap; }
 .primary, .primary:hover:not(:disabled) { color: var(--surface); background: var(--accent); border-color: var(--accent); font-weight: 600; }

@@ -10,6 +10,7 @@ import { ExportDialog, FindBar, FolderSearch, GoToLine, NewFileDialog, QuickOpen
 import { CommandPalette } from './ui/CommandPalette.jsx'
 import { DocumentContextMenu } from './ui/DocumentContextMenu.jsx'
 import { desktop, native } from './workspace/desktop.js'
+import { imageReferenceReplacement, listImageReferences, replaceImageReferences } from './workspace/image-reference.js'
 import { headings, localImageSources, MAX_LIVE_LENGTH, slug, updateImageSources, wordCount } from './workspace/text.js'
 import { isDirty, useWorkspace } from './workspace/useWorkspace.js'
 import { SpecCheckDialog, SourceLinkDialog, TemplatesDialog } from './review/WorkflowDialogs.jsx'
@@ -68,6 +69,7 @@ export default function App() {
   const [folderToExpand, setFolderToExpand] = useState(null)
   const [createdFileFocus, setCreatedFileFocus] = useState(null)
   const [context, setContext] = useState(null)
+  const imageCollection = useRef(null)
   const [systemDark, setSystemDark] = useState(() => matchMedia('(prefers-color-scheme: dark)').matches)
   const activeId = useRef(null)
   activeId.current = active?.id
@@ -95,6 +97,11 @@ export default function App() {
   const words = useMemo(() => wordCount(deferredText), [deferredText])
   const run = useCallback(work => Promise.resolve().then(work).catch(error => { notify(error.message ?? String(error), true) }), [notify])
   const closeDialog = () => setDialog(null)
+
+  function cancelImageCollection() {
+    if (imageCollection.current) imageCollection.current.canceled = true
+    closeDialog()
+  }
 
   useEffect(() => {
     if ((dialog?.type === 'review' && !reviewDoc) || (dialog?.type === 'source-link' && active?.id !== dialog.docId)) {
@@ -323,6 +330,64 @@ export default function App() {
       type: 'review', docId: doc.id, baseText: currentText ?? doc.text,
       expectedPath: doc.path, initialCandidate, requestId: crypto.randomUUID(),
     })
+  }
+
+  async function collectDocumentImages(doc, item) {
+    if (imageCollection.current) {
+      notify('上一项图片收拢操作正在结束，请稍后重试。')
+      return
+    }
+    const task = { canceled: false }
+    imageCollection.current = task
+    const isCurrent = () => !task.canceled
+    setDialog({ type: 'collecting-images', name: item.name })
+    let result, applied = false
+    try {
+      doc ??= await workspace.openPath(item.path, { activate: false })
+      if (!isCurrent()) return
+      if (!doc?.path) throw new Error('请先保存文档，再收拢图片。')
+      if (doc.conflict) throw new Error('请先处理文档的磁盘冲突，再收拢图片。')
+      const expectedText = (doc.id === activeId.current ? flushEditor() : undefined) ?? doc.text
+      const references = listImageReferences(expectedText)
+      const unresolved = references.filter(reference => reference.unresolved)
+      const sources = [...new Set(references.filter(reference => !reference.unresolved && !/^data:image\//i.test(reference.address))
+        .map(reference => reference.address))]
+      result = sources.length ? await desktop.collectImages({
+        documentPath: doc.path, rootPath: settings.imageRoot, assetFolder: settings.imageFolder, sources,
+      }) : { replacements: [], failures: [], copied: 0 }
+      if (!isCurrent()) return
+
+      const replacements = new Map(result.replacements.map(({ source, markdownPath }) => [source, markdownPath]))
+      const changes = references.filter(reference => {
+        if (reference.unresolved || !replacements.has(reference.address)) return false
+        const address = replacements.get(reference.address)
+        return address !== reference.address && imageReferenceReplacement(reference, address) !== expectedText.slice(reference.from, reference.to)
+      })
+      if (changes.length) {
+        const text = replaceImageReferences(expectedText, changes, replacements)
+        if (doc.id === activeId.current) flushEditor()
+        applied = await workspace.replaceDocumentText(doc.id, { expectedText, expectedPath: doc.path, text, isCurrent })
+        if (!isCurrent()) return
+        if (result.copied) setRefresh(previous => previous + 1)
+      }
+
+      const failures = new Map(result.failures.map(failure => [failure.source, failure.reason]))
+      for (const reference of unresolved) failures.set(reference.address, '没有可用的图片地址或引用定义。')
+      setDialog({ type: 'image-collection-result', id: doc.id, name: doc.name,
+        copied: result.copied, updated: applied ? changes.length : 0, hasImages: references.length > 0,
+        failures: [...failures], folder: result.directory, usedDefaultFolder: result.usedDefaultFolder })
+    } catch (error) {
+      if (isCurrent()) {
+        closeDialog()
+        throw error
+      }
+    } finally {
+      try {
+        if (result?.token) await desktop.finishImageCollection(result.token, applied)
+      } finally {
+        imageCollection.current = null
+      }
+    }
   }
 
   async function applyReview({ expectedText, text }) {
@@ -554,6 +619,7 @@ export default function App() {
       settings.pinned.includes(item.path) ? ['unpin', '取消固定'] : ['pin', '固定文件夹']], fileActions]
     const documentActions = [['review', '审阅修订稿']]
     if (contextDoc?.reviewUndo && contextDoc.text === contextDoc.reviewUndo.after) documentActions.push(['undo-review', '撤销本次审阅'])
+    if (item.path && desktop.collectImages) documentActions.push(['collect-document-images', '收拢图片到文档资源目录'])
     if (item.kind === 'editor') {
       const { editable, selection, kind, href, canCopyImage, canSaveImage, canRevealImage, canCollectImage, canPaste, language, header, columnCount, spelling } = item.detail
       const spellingActions = spelling ? [
@@ -603,6 +669,10 @@ export default function App() {
     const item = context.item
     const doc = workspace.getDocument(item.id) ?? workspace.getDocumentByPath(item.path)
     dismissContext(true)
+    if (key === 'collect-document-images') {
+      run(() => collectDocumentImages(doc, item))
+      return
+    }
     if (key === 'review') {
       if (doc) openReview(doc)
       else if (item.path) run(async () => openReview(await workspace.openPath(item.path, { activate: false })))
@@ -792,6 +862,26 @@ export default function App() {
     {dialog?.type === 'discard-recovery' && <Modal title="删除恢复草稿？" onClose={closeDialog}>
       <p className="modal-detail">{dialog.draft.name}</p><footer><button onClick={() => setDialog({ type: 'recovery' })}>取消</button>
         <button className="danger" onClick={() => run(async () => { await workspace.removeRecovery(dialog.draft.id); setDialog({ type: 'recovery' }) })}>删除草稿</button></footer>
+    </Modal>}
+    {dialog?.type === 'collecting-images' && <Modal title="正在收拢图片" onClose={cancelImageCollection}>
+      <p className="modal-detail">正在处理「{dialog.name}」中的图片。</p>
+      <footer><button onClick={cancelImageCollection}>取消</button></footer>
+    </Modal>}
+    {dialog?.type === 'image-collection-result' && <Modal title="图片收拢结果" onClose={closeDialog}>
+      <p className="modal-detail">{dialog.name}</p>
+      <p>{!dialog.hasImages ? '这篇文档没有图片引用。' : dialog.updated || dialog.failures.length
+        ? `已复制 ${dialog.copied} 张图片，更新 ${dialog.updated} 处引用。`
+        : '无需复制，图片已在资源目录中或内嵌在文档里。'}</p>
+      {dialog.folder && <p className="modal-detail">文档资源目录 · {leaf(dialog.folder)}</p>}
+      {dialog.usedDefaultFolder && <p className="modal-detail">已使用文档旁的默认资源目录，便于一起移动。</p>}
+      {dialog.failures.length > 0 && <>
+        <p>以下 {dialog.failures.length} 个图片地址未处理，原引用已保留。</p>
+        <ul className="image-collection-failures">{dialog.failures.map(([source, reason]) =>
+          <li key={source}><code>{source || '空图片地址'}</code><span>{reason}</span></li>)}</ul>
+      </>}
+      {dialog.updated > 0 && <p className="modal-detail">保存文档后，可将文档和资源目录一起移动。</p>}
+      <footer><button onClick={closeDialog}>完成</button>{dialog.updated > 0 &&
+        <button className="primary" onClick={() => run(async () => { if (await workspace.save(dialog.id)) closeDialog() })}>保存文档</button>}</footer>
     </Modal>}
     {dialog?.type === 'close' && <Modal title="保存更改？" onClose={closeDialog}>
       <p className="modal-detail">{dialog.name}</p><footer><button onClick={closeDialog}>取消</button>

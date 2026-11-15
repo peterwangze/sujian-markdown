@@ -22,6 +22,7 @@ const suites = [
   'check-image-files-desktop',
   'check-image-paste-desktop',
   'check-image-collection-desktop',
+  'check-image-batch-collection-desktop',
   'check-media-export-desktop',
   'check-html-desktop',
   'check-markdown-desktop',

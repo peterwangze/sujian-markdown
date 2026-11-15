@@ -68,6 +68,7 @@ contextBridge.exposeInMainWorld('sujian', {
   saveImageAs: invoke('save-image-as'),
   revealImage: invoke('reveal-image'),
   collectImage: invoke('collect-image'),
+  collectImages: invoke('collect-images'),
   finishImageCollection: invoke('finish-image-collection'),
   uploadImages: invoke('upload-images'),
   importDocument: invoke('import-document'),
