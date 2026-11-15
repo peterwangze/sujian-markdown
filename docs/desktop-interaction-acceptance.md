@@ -84,6 +84,8 @@
 | `WF-04` 导入、导出与打印 | 用文件、工具栏与快捷键进入。导出 HTML/PDF/Word/EPUB 并实际打开结果，检查 PNG、幻灯片、自定义格式、打印与取消路径。 | 已通过 22 种格式产物检查、横向 Letter PDF、取消保存及源文件保护。DOCX、ODT、EPUB、HTML、RTF 五种导入往返通过。见 `check-delivery-desktop.mjs`、`check-markdown-desktop.mjs`。物理打印待实测。 |
 | `WF-05` 审阅选择与冲突 | 用复制底稿、粘贴、文件选择、更换修订稿、选择旧底稿和恢复默认底稿。制造仅当前稿变化及重叠变化，逐项、全采纳、全跳过并翻页。仅有可应用选择时允许应用，检查预览和原文。 | 实际桌面覆盖选择性应用与撤销。审阅模型单元覆盖三方重叠，批量、换底稿和分页的桌面路径待实测。见 `src/review/model.test.js`、`check-review-workflows-desktop.mjs`。 |
 | `WF-06` 文档的 Git 提交历史 | 在标签页右击已跟踪文档，核对提交说明及顺序，确认列表只含当前文档的提交。点选更名前的一版，在源码差异和排版预览中比较未保存的当前稿，再返回历史选另一版。用 `Shift+F10` 在文件树为未打开的文档执行同一操作，原文档保持为当前标签。 | Windows Electron 实测通过，包括未跟踪、仓库外两种提示，以及磁盘内容、暂存区和 HEAD 核对。后端真实 Git 测试另覆盖空仓库、删除记录、分页和 HEAD 移动后的旧分页。见 `check-git-document-history-desktop.mjs`、`electron/git-document-history.test.cjs`。 |
+| `WF-07` 从 Git 历史选取改动 | 关闭自动保存，准备一份包含多处差异和未保存编辑的文档。从标签页或文件树进入历史，零选择时确认 **恢复所选改动** 禁用。选中含未保存内容的差异，核对提示和取消。改选独立的一处，用 **排版预览 → 只预览选中的恢复** 查看将得到的内容，再应用、撤销、重新应用并保存重开。 | Windows Electron 通过两个入口、选择和取消、预览开关、保留未选中的内容和未保存稿、撤销及保存重开后的原文比对。审阅模型单元测试另覆盖段落、列表和代码差异的未保存修改判断。见 `check-git-document-history-desktop.mjs`、`src/review/model.test.js`。 |
+| `WF-08` 恢复 Git 历史整版 | 当前稿有未保存编辑时打开 **恢复整篇…**。核对覆盖提示和取消按钮的默认焦点。先取消并确认当前稿与选择，再确认恢复，核对整版内容，撤销后重新恢复并保存重开。在确认打开时从外部修改一份已保存的文档，核对旧确认失效。 | Windows Electron 通过确认、取消、撤销和保存重开。实测外部改动会禁用原确认并清除过时的选择，已核对恢复前后的 `HEAD` 与暂存区。见 `check-git-document-history-desktop.mjs`。 |
 
 ## Markdown 格式与渲染范围
 
@@ -147,3 +149,4 @@
 | 文件与工作区 | `node scripts/check-file-creation-desktop.mjs`、`node scripts/check-workspace-interactions-desktop.mjs` |
 | 设置、窗口与拼写检查 | `node scripts/check-settings-desktop.mjs`、`node scripts/check-window-interactions-desktop.mjs`、`node scripts/check-spellcheck-desktop.mjs` |
 | Markdown、HTML、审阅与交付 | `node scripts/check-markdown-desktop.mjs`、`node scripts/check-html-desktop.mjs`、`node scripts/check-review-workflows-desktop.mjs`、`node scripts/check-delivery-desktop.mjs` |
+| Git 文档历史与恢复 | `node scripts/check-git-document-history-desktop.mjs` |

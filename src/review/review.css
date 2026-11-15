@@ -156,7 +156,9 @@
 .review-empty-source, .review-notice { margin: 0; padding: 8px 9px; color: var(--muted); }
 .review-pager { justify-content: center; color: var(--muted); }
 
-.review-preview-choice { display: inline-flex; align-items: center; gap: 4px; }
+.review-choice { display: inline-flex; align-items: center; gap: 5px; cursor: pointer; }
+.review-choice:has(input:disabled) { cursor: default; color: var(--muted); }
+.review-restore-choice { margin-left: auto; }
 
 .review-preview-grid {
   min-height: 120px;

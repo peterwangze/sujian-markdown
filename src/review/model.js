@@ -133,3 +133,16 @@ export function applyReview(review, selectedIds) {
   segments.push(review.currentText.slice(cursor))
   return segments.join('')
 }
+
+export function selectionOverwritesUnsavedChanges(review, savedText, selectedIds) {
+  if (savedText === review.currentText) return false
+  const selected = new Set(selectedIds)
+  try {
+    // From the current draft, moving toward the saved text reverses its unsaved changes.
+    const overlap = buildReview(review.currentText, savedText, review.candidateText)
+    return overlap.changes.some(change => selected.has(change.id) && change.status !== 'ready')
+  } catch (error) {
+    if (error instanceof RangeError) return true
+    throw error
+  }
+}

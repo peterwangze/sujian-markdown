@@ -138,6 +138,7 @@ export function useWorkspace(notify, beforeClose) {
       const disk = await desktop.readReviewSnapshot(before.path)
       const current = check()
       if (!current) return false
+      if (current.hash !== before.hash) throw new Error('当前文档已重新保存，请核对后再试。')
       if (!disk || disk.hash !== current.hash) {
         applyDiskChange(current.path, disk)
         throw new Error('磁盘上的文档已变动，请重新开始操作。')

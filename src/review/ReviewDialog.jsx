@@ -3,7 +3,7 @@ import { FileUp, GitBranch } from 'lucide-react'
 import { renderPreview } from '../editor/render-document.js'
 import { Modal } from '../ui/Controls.jsx'
 import { MAX_LIVE_LENGTH } from '../workspace/text.js'
-import { applyReview, buildReview } from './model.js'
+import { applyReview, buildReview, selectionOverwritesUnsavedChanges } from './model.js'
 import './review.css'
 
 const changesPerPage = 24
@@ -33,11 +33,13 @@ function SourcePane({ title, text, kind = '' }) {
   </div>
 }
 
-function ChangeCard({ change, comparison, decision, decide, disabled }) {
+function ChangeCard({ change, comparison, restoration, decision, decide, disabled }) {
   const conflict = change.status === 'conflict'
   const ready = change.status === 'ready'
   const status = conflict ? '内容冲突' : change.status === 'already-applied' ? '已在当前稿中' :
     decision === 'accept' ? '已采纳' : decision === 'skip' ? '已跳过' : ''
+  const leftTitle = comparison ? 'Git 基线' : ready ? sourceLabels.current : sourceLabels.base
+  const rightTitle = comparison ? sourceLabels.current : sourceLabels.candidate
   return <li className={'review-change' + (conflict ? ' is-conflict' : '')}>
     <div className="review-change-heading">
       <h3>第 {change.line} 行</h3>
@@ -46,11 +48,16 @@ function ChangeCard({ change, comparison, decision, decide, disabled }) {
         <button type="button" disabled={disabled} aria-pressed={decision === 'accept'} onClick={() => decide(change.id, 'accept')}>采纳此处</button>
         <button type="button" disabled={disabled} aria-pressed={decision === 'skip'} onClick={() => decide(change.id, 'skip')}>跳过此处</button>
       </div>}
+      {restoration && <label className="review-choice review-restore-choice">
+        <input type="checkbox" aria-label={`恢复第 ${change.line} 行的改动`} checked={restoration.checked}
+          onChange={event => restoration.choose(change.id, event.target.checked)} disabled={disabled}/>
+        恢复此处
+      </label>}
     </div>
     <div className="review-source-grid">
-      <SourcePane title={comparison ? 'Git 基线' : ready ? sourceLabels.current : sourceLabels.base} text={change.before} kind="is-before"/>
+      <SourcePane title={leftTitle} text={restoration ? change.after : change.before} kind="is-before"/>
       {conflict && <SourcePane title={sourceLabels.current} text={change.current}/>}
-      <SourcePane title={comparison ? sourceLabels.current : sourceLabels.candidate} text={change.after} kind="is-after"/>
+      <SourcePane title={rightTitle} text={restoration ? change.before : change.after} kind="is-after"/>
     </div>
   </li>
 }
@@ -87,7 +94,7 @@ function RenderedPane({ title, text, theme }) {
   </section>
 }
 
-export function ReviewDialog({ name, baseText, currentText, diskText, diskConflict, initialCandidate, initialGitBase,
+export function ReviewDialog({ name, baseText, currentText, savedText = currentText, diskText, diskConflict, initialCandidate, initialGitBase,
   compareGit, chooseCandidate, copyBase, theme, onApply, onClose, onGitHistory }) {
   const [draft, setDraft] = useState('')
   const [candidate, setCandidate] = useState(() => normalizeCandidate(initialCandidate ?? null))
@@ -99,26 +106,33 @@ export function ReviewDialog({ name, baseText, currentText, diskText, diskConfli
   const [view, setView] = useState('source')
   const [previewAccepted, setPreviewAccepted] = useState(false)
   const [decisions, setDecisions] = useState({})
+  const [restoreChoices, setRestoreChoices] = useState(null)
+  const [restoreConfirmation, setRestoreConfirmation] = useState(null)
   const [page, setPage] = useState(0)
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
   const fileInput = useRef(null)
   const filePurpose = useRef('candidate')
   const changesList = useRef(null)
+  const cancelRestore = useRef(null)
   const comparing = mode === 'git'
+  const restoring = comparing && Boolean(onGitHistory)
+  const currentDirty = currentText !== savedText
   const left = comparing ? gitBase?.text : importedBase?.text ?? baseText
   const right = comparing ? currentText : candidate?.text
   const compared = useMemo(() => {
     if (left === undefined || right === undefined) return {}
     try {
-      return { review: buildReview(left, comparing ? left : currentText, right) }
+      const review = restoring ? buildReview(currentText, currentText, left) : buildReview(left, comparing ? left : currentText, right)
+      return { review }
     } catch (error) {
       return { error: error.message }
     }
-  }, [left, right, comparing, currentText])
+  }, [left, right, comparing, restoring, currentText])
   const changes = compared.review?.changes ?? []
   const ready = changes.filter(change => change.status === 'ready')
   const selected = ready.filter(change => decisions[change.id] === 'accept').map(change => change.id)
+  const selectedRestores = restoreChoices?.review === compared.review ? restoreChoices?.ids ?? [] : []
   const skipped = ready.filter(change => decisions[change.id] === 'skip').length
   const conflicts = changes.filter(change => change.status === 'conflict').length
   const pages = Math.ceil(changes.length / changesPerPage)
@@ -194,6 +208,7 @@ export function ReviewDialog({ name, baseText, currentText, diskText, diskConfli
     setPage(0)
     setMessage('')
     setView('source')
+    setPreviewAccepted(false)
   }
 
   function editCandidate() {
@@ -210,26 +225,51 @@ export function ReviewDialog({ name, baseText, currentText, diskText, diskConfli
     setDecisions(Object.fromEntries(ready.map(change => [change.id, next])))
   }
 
+  function chooseRestore(id, checked) {
+    setRestoreChoices(previous => {
+      const ids = previous?.review === compared.review ? previous.ids : []
+      return { review: compared.review, ids: checked ? [...ids, id] : ids.filter(change => change !== id) }
+    })
+  }
+
   function turnPage(next) {
     setPage(next)
     changesList.current?.scrollTo({ top: 0 })
   }
 
-  function apply() {
-    if (diskConflict || comparing || !selected.length) return
+  function apply(expectedText, entireDocument = false) {
+    const selectedIds = restoring ? selectedRestores : selected
+    if (diskConflict || currentText !== expectedText || (comparing && !restoring) || (!entireDocument && !selectedIds.length)) return
     void run(async () => {
-      const text = applyReview(compared.review, selected)
-      if (!await onApply({ expectedText: currentText, text })) {
+      const text = entireDocument ? gitBase.text : applyReview(compared.review, selectedIds)
+      if (!await onApply({ expectedText, text, restoringHistory: restoring })) {
         throw new Error('当前稿已改变，请重新核对差异后再应用。')
       }
     })
   }
 
-  const close = () => { if (!busy) onClose() }
-  const showComparison = comparing ? !!gitBase : !!candidate
-  const renderedText = view === 'rendered' && !comparing && previewAccepted && compared.review ? applyReview(compared.review, selected) : right
+  function requestRestore(entireDocument) {
+    if (entireDocument || selectionOverwritesUnsavedChanges(compared.review, savedText, selectedRestores)) {
+      setMessage('')
+      setRestoreConfirmation({ text: currentText, entireDocument, wasDirty: currentDirty })
+    } else apply(currentText)
+  }
 
-  return <Modal title="审阅修订稿" onClose={close} className="review-modal">
+  const close = () => { if (!busy) onClose() }
+  const closeRestoreConfirmation = () => {
+    if (busy) return
+    setRestoreConfirmation(null)
+    setMessage('')
+  }
+  const showComparison = comparing ? !!gitBase : !!candidate
+  const previewSelection = (!comparing || restoring) && previewAccepted && compared.review
+  const renderedText = view === 'rendered' && previewSelection ? applyReview(compared.review, restoring ? selectedRestores : selected) : right
+  const renderedRightTitle = restoring && previewSelection ? '恢复后的文档' : comparing ? sourceLabels.current :
+    previewAccepted ? '采纳后的文档' : sourceLabels.candidate
+  const canRestoreAll = restoring && gitBase && gitBase.text !== currentText && !diskConflict
+  const confirmationStale = restoreConfirmation && restoreConfirmation.text !== currentText
+
+  return <><Modal title="审阅修订稿" onClose={close} className="review-modal">
     <div className="review-context">
       <p className="review-document" title={name}>{name}</p>
       {compareGit && <div className="review-toggle" role="group" aria-label="审阅来源">
@@ -237,10 +277,10 @@ export function ReviewDialog({ name, baseText, currentText, diskText, diskConfli
         <button type="button" aria-pressed={comparing} disabled={busy} onClick={() => changeMode('git')}><GitBranch size={14}/>Git 比较</button>
       </div>}
     </div>
-    {diskConflict && !comparing && <details className="review-disk-conflict">
-      <summary>磁盘文件已改变。请先处理磁盘冲突，再应用修订。</summary>
+    {diskConflict && (!comparing || restoring) && <details className="review-disk-conflict">
+      <summary>磁盘文件已改变。{restoring ? '请先处理磁盘冲突，再恢复历史内容。' : '请先处理磁盘冲突，再应用修订。'}</summary>
       <div className="review-source-grid">
-        <SourcePane title={sourceLabels.base} text={left}/>
+        <SourcePane title={restoring ? 'Git 基线' : sourceLabels.base} text={left}/>
         <SourcePane title={sourceLabels.current} text={currentText}/>
         {typeof diskText === 'string' ? <SourcePane title="磁盘稿" text={diskText}/> : <p>磁盘文件已移除。</p>}
       </div>
@@ -284,17 +324,20 @@ export function ReviewDialog({ name, baseText, currentText, diskText, diskConfli
           <button type="button" disabled={busy} onClick={() => decideAll('accept')}>采纳所有可用改动</button>
           <button type="button" disabled={busy} onClick={() => decideAll('skip')}>全部跳过</button>
         </div>}
-        {!comparing && view === 'rendered' && compared.review && <label className="review-preview-choice">
-          <input type="checkbox" checked={previewAccepted} onChange={event => setPreviewAccepted(event.target.checked)}/>只预览已采纳的改动
+        {(!comparing || restoring) && view === 'rendered' && compared.review && <label className="review-choice">
+          <input type="checkbox" checked={previewAccepted} onChange={event => setPreviewAccepted(event.target.checked)}/>
+          {restoring ? '只预览选中的恢复' : '只预览已采纳的改动'}
         </label>}
       </div>
       {compared.error ? <p className="review-error" role="alert">{compared.error}</p> : view === 'rendered' ? <div className="review-preview-grid">
         <RenderedPane title={comparing ? 'Git 基线' : sourceLabels.current} text={comparing ? left : currentText} theme={theme}/>
-        <RenderedPane title={comparing ? sourceLabels.current : previewAccepted ? '采纳后的文档' : sourceLabels.candidate} text={renderedText} theme={theme}/>
+        <RenderedPane title={renderedRightTitle} text={renderedText} theme={theme}/>
       </div> : changes.length === 0 ? <p className="review-notice">两份文档没有差异。</p> : <>
         <ol ref={changesList} className="review-changes" aria-label="文档改动">
           {changes.slice(currentPage * changesPerPage, (currentPage + 1) * changesPerPage).map(change =>
-            <ChangeCard key={change.id} change={change} comparison={comparing} decision={decisions[change.id]} decide={decide} disabled={busy}/>)}
+            <ChangeCard key={change.id} change={change} comparison={comparing} decision={decisions[change.id]} decide={decide}
+              restoration={restoring ? { checked: selectedRestores.includes(change.id), choose: chooseRestore } : null}
+              disabled={busy || (restoring && diskConflict)}/>)}
         </ol>
         {pages > 1 && <nav className="review-pager" aria-label="差异分页">
           <button type="button" disabled={currentPage === 0} onClick={() => turnPage(currentPage - 1)}>上一页</button>
@@ -303,18 +346,42 @@ export function ReviewDialog({ name, baseText, currentText, diskText, diskConfli
         </nav>}
       </>}
     </>}
-    {message && <p className="review-error" role="alert">{message}</p>}
+    {message && !restoreConfirmation && <p className="review-error" role="alert">{message}</p>}
     <footer className="review-footer">
       {compared.review && <p role="status">
-        {comparing ? `${changes.length} 处差异` : `已采纳 ${selected.length} · 已跳过 ${skipped}${conflicts ? ` · ${conflicts} 处冲突` : ''}`}
+        {restoring ? `已选 ${selectedRestores.length} 处 · 共 ${changes.length} 处差异` : comparing ? `${changes.length} 处差异` :
+          `已采纳 ${selected.length} · 已跳过 ${skipped}${conflicts ? ` · ${conflicts} 处冲突` : ''}`}
       </p>}
       {busy && <span role="status">处理中…</span>}
       {onGitHistory && <button type="button" onClick={onGitHistory} disabled={busy}>返回提交历史</button>}
       <button type="button" onClick={close} disabled={busy}>结束审阅</button>
-      {!comparing && !!candidate && <button type="button" className="primary" onClick={apply}
+      {!comparing && !!candidate && <button type="button" className="primary" onClick={() => apply(currentText)}
         disabled={busy || diskConflict || !selected.length}>应用已采纳改动</button>}
+      {restoring && <>
+        <button type="button" onClick={() => requestRestore(true)}
+          disabled={busy || !canRestoreAll}>恢复整篇…</button>
+        <button type="button" className="primary" onClick={() => requestRestore(false)}
+          disabled={busy || diskConflict || !selectedRestores.length}>恢复所选改动</button>
+      </>}
     </footer>
   </Modal>
+  {restoreConfirmation && <Modal title={restoreConfirmation.entireDocument ? '恢复整个历史版本？' : '恢复所选改动？'}
+    onClose={closeRestoreConfirmation} initialFocusRef={cancelRestore}>
+    {restoreConfirmation.entireDocument && <p className="modal-detail">将用「{gitBase.name}」的全文替换「{name}」的当前稿。</p>}
+    {(restoreConfirmation.wasDirty || currentDirty) && <p role="alert">{restoreConfirmation.entireDocument
+      ? '当前稿有未保存的修改，整篇恢复会覆盖这些修改。' : '所选改动包含未保存的修改，恢复会覆盖这些修改。'}</p>}
+    <p className="modal-detail">可在文档右键菜单选择「撤销本次审阅」，找回恢复前的稿件。</p>
+    {(confirmationStale || diskConflict || message) && <p className="review-error" role="alert">
+      {confirmationStale ? '当前稿已改变。请取消并重新核对差异。' : diskConflict ? '磁盘文件已改变。请先处理磁盘冲突。' : message}
+    </p>}
+    <footer>
+      <button type="button" ref={cancelRestore} onClick={closeRestoreConfirmation} disabled={busy}>取消</button>
+      <button type="button" className="danger" disabled={busy || confirmationStale || diskConflict}
+        onClick={() => apply(restoreConfirmation.text, restoreConfirmation.entireDocument)}>
+        {restoreConfirmation.entireDocument ? '确认恢复整篇' : '确认恢复所选改动'}
+      </button>
+    </footer>
+  </Modal>}</>
 }
 
 export default ReviewDialog

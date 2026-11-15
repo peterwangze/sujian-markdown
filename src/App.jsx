@@ -69,6 +69,7 @@ export default function App() {
   const { docs, active, settings, configure, amend, ready } = workspace
   const [sidebar, setSidebar] = useState('files')
   const [dialog, setDialog] = useState(null)
+  const reviewRequest = useRef(null)
   const [commandQueue, setCommandQueue] = useState([])
   const [findState, setFindState] = useState(null)
   const findControl = useRef(null)
@@ -88,7 +89,9 @@ export default function App() {
   }, [active?.id, createdFileFocus])
   const requestedJump = useRef(null)
   const mode = active?.mode ?? settings.mode
-  const reviewDoc = dialog?.type === 'review' ? docs.find(doc => doc.id === dialog.docId) : null
+  const reviewDoc = dialog?.type === 'review' ? docs.find(doc => doc.id === dialog.docId &&
+    (!dialog.gitHistoryPage || doc.path === dialog.expectedPath)) : null
+  const reviewRequestId = reviewDoc ? dialog.requestId : null
   const historyDoc = dialog?.type === 'git-document-history' ? docs.find(doc => doc.id === dialog.docId && doc.path === dialog.expectedPath) : null
   const canUndoReview = !!active?.reviewUndo && active.text === active.reviewUndo.after
   const contextDoc = context && (workspace.getDocument(context.item.id) ?? workspace.getDocumentByPath(context.item.path))
@@ -120,6 +123,11 @@ export default function App() {
   }, [active?.id, dialog, historyDoc, reviewDoc])
 
   useEffect(() => { if (dialog) setContext(null) }, [dialog])
+
+  useLayoutEffect(() => {
+    reviewRequest.current = reviewRequestId
+    return () => { reviewRequest.current = null }
+  }, [reviewRequestId])
 
   useEffect(() => {
     const media = matchMedia('(prefers-color-scheme: dark)')
@@ -438,15 +446,16 @@ export default function App() {
     }
   }
 
-  async function applyReview({ expectedText, text }) {
+  async function applyReview({ expectedText, text, restoringHistory }) {
     if (activeId.current === dialog.docId) flushEditor()
     const changed = await workspace.replaceReviewedText(dialog.docId, {
       expectedText, expectedPath: dialog.expectedPath, text,
+      isCurrent: () => reviewRequest.current === dialog.requestId,
     })
     if (changed) {
       setDialog(previous => previous?.requestId === dialog.requestId ? null : previous)
-      notify(activeId.current === dialog.docId ? '已采纳修订。可在「文档与视图」撤销本次审阅。' :
-        '已采纳「' + reviewDoc.name + '」的修订。可在该文档的右键菜单撤销。')
+      const result = restoringHistory ? `已恢复「${reviewDoc.name}」的历史内容。` : `已采纳「${reviewDoc.name}」的修订。`
+      notify(`${result}可在文档右键菜单选择「撤销本次审阅」。`)
     }
     return changed
   }
@@ -870,6 +879,7 @@ export default function App() {
       onCompare={compareDocumentRevision} onClose={closeDialog}/>}
     {reviewDoc && <Suspense fallback={null}>
       <ReviewDialog key={dialog.requestId} name={reviewDoc.name} baseText={dialog.baseText} currentText={reviewDoc.text} initialGitBase={dialog.initialGitBase}
+        savedText={reviewDoc.savedText}
         onGitHistory={dialog.gitHistoryPage && reviewDoc.path === dialog.expectedPath ? () => openGitDocumentHistory(reviewDoc, dialog.gitHistoryPage) : undefined}
         diskText={reviewDoc.conflict?.document?.text ?? null} diskConflict={!!reviewDoc.conflict}
         initialCandidate={dialog.initialCandidate}

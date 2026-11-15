@@ -1,11 +1,14 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { EditorState } from '@codemirror/state'
+import { ensureSyntaxTree } from '@codemirror/language'
 import { markdown } from '@codemirror/lang-markdown'
 import { sourceSpellcheckExcluded } from './source-spellcheck.js'
 
 function checkSource(source) {
-  const state = EditorState.create({ doc: source, extensions: [markdown({ addKeymap: false })] })
+  const initial = EditorState.create({ doc: source, extensions: [markdown({ addKeymap: false })] })
+  assert.ok(ensureSyntaxTree(initial, initial.doc.length, Infinity))
+  const state = initial.update().state
   return word => {
     const from = source.indexOf(word)
     assert.notEqual(from, -1, word)

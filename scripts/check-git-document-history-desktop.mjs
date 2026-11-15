@@ -16,6 +16,8 @@ const oldName = '产品计划 旧版.md'
 const note = '产品计划.md'
 const background = '验收记录.md'
 const untracked = '临时构思.md'
+const restoreNote = '发布说明.md'
+const restorePath = path.join(repo, restoreNote)
 const outside = path.join(working, '仓库外笔记.md')
 const subject = {
   first: '建立产品计划初稿',
@@ -23,6 +25,8 @@ const subject = {
   rename: '整理产品计划文件名',
   current: '更新产品计划里程碑',
   background: '补充验收记录',
+  restoreBase: '确定试用发布说明',
+  restoreCurrent: '更新发布说明的范围和节奏',
   unrelated: '更新项目索引',
 }
 const firstText = '# 产品计划\n\n先验证基础编写流程。\n'
@@ -31,6 +35,18 @@ const currentText = '# 产品计划\n\n里程碑一已完成，进入文档审�
 const draftLine = '未保存的草稿补充说明。'
 const backgroundOriginal = '# 验收记录\n\n初稿中记录了三项检查。\n'
 const backgroundText = '# 验收记录\n\n当前记录覆盖五项检查。\n'
+const oldScope = '首批试用覆盖写作与导出。'
+const latestScope = '首批试用只覆盖写作。'
+const oldTimeline = '每周收集一次试用反馈。'
+const latestTimeline = '首周每天收集一次试用反馈。'
+const restoreBaseline = [
+  '# 发布说明', '', '## 试用范围', '', oldScope, '', '## 反馈节奏', '', oldTimeline, '',
+  '试用期间保留原有的本地保存流程。', '',
+].join('\n')
+const restoreCurrent = restoreBaseline.replace(oldScope, latestScope).replace(oldTimeline, latestTimeline)
+const selectiveDraft = '\n支持渠道继续收集安装反馈。\n'
+const fullDraft = '\n周五再确认下一批试用名单。\n'
+const selectivelyRestored = restoreCurrent.replace(latestScope, oldScope) + selectiveDraft
 const executablePath = process.env.SUJIAN_QA_EXE
 const git = promisify(execFile)
 const env = Object.fromEntries(Object.entries(process.env).filter(([name]) => !/^GIT_/i.test(name)))
@@ -70,6 +86,10 @@ await rename(path.join(repo, oldName), path.join(repo, note))
 await commit(subject.rename)
 await writeFile(path.join(repo, note), currentText)
 await commit(subject.current)
+await writeFile(restorePath, restoreBaseline)
+await commit(subject.restoreBase)
+await writeFile(restorePath, restoreCurrent)
+await commit(subject.restoreCurrent)
 await writeFile(path.join(repo, '索引.md'), '# 项目索引\n\n补充导航项。\n')
 const head = await commit(subject.unrelated)
 await writeFile(path.join(repo, untracked), '# 临时构思\n')
@@ -87,8 +107,43 @@ const row = name => sidebar.getByRole('button', { name, exact: true }).and(sideb
 const history = page.getByRole('dialog', { name: 'Git 提交历史', exact: true })
 const review = page.getByRole('dialog', { name: '审阅修订稿', exact: true })
 const source = page.getByLabel('Markdown 源码')
+const sourceLine = text => source.locator('.cm-line').getByText(text, { exact: true })
 const button = (name, scope = page) => scope.getByRole('button', { name, exact: true })
 const historyEntry = title => history.getByRole('button').filter({ hasText: title })
+
+async function documentAction(name) {
+  await button('文档与视图').click()
+  await button(name, page.locator('.tool-menu-list')).click()
+}
+
+async function appendToSource(line) {
+  await source.press(process.platform === 'darwin' ? 'Meta+ArrowDown' : 'Control+End')
+  await page.keyboard.press('Enter')
+  await page.keyboard.insertText(line)
+  await page.keyboard.press('Enter')
+}
+
+async function assertSource(expected) {
+  try {
+    await page.waitForFunction(text => [...document.querySelectorAll('[aria-label="Markdown 源码"] .cm-line')]
+      .map(line => line.textContent).join('\n') === text, expected, { timeout: 5000 })
+  } catch (error) {
+    const actual = (await source.locator('.cm-line').allTextContents()).join('\n')
+    if (actual !== expected) assert.equal(actual, expected)
+    throw error
+  }
+}
+
+async function saveAndReopenRestore(expected) {
+  await documentAction('保存')
+  await tab(restoreNote).getByTitle('有未保存的改动', { exact: true }).waitFor({ state: 'hidden' })
+  assert.equal(await readFile(restorePath, 'utf8'), expected)
+  await button('关闭 ' + restoreNote).click()
+  await tab(restoreNote).waitFor({ state: 'hidden' })
+  await row(restoreNote).click()
+  await tab(restoreNote).and(selectedTab).waitFor()
+  await assertSource(expected)
+}
 
 async function openHistory(entry, document, keyboard = false) {
   if (keyboard) await entry.press('Shift+F10')
@@ -113,8 +168,7 @@ async function assertComparison(title, oldLine, currentLine, keyboard = false) {
 try {
   await page.waitForSelector('.application[data-ready="true"]')
   await source.getByText('里程碑一已完成，进入文档审阅。', { exact: true }).waitFor()
-  await source.press(process.platform === 'darwin' ? 'Meta+End' : 'Control+End')
-  await page.keyboard.insertText('\n' + draftLine + '\n')
+  await appendToSource(draftLine)
   await source.getByText(draftLine, { exact: true }).waitFor()
 
   await openHistory(tab(note), note)
@@ -160,8 +214,7 @@ try {
   await app.evaluate(({ dialog }, selected) => {
     dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [selected] })
   }, outside)
-  await button('文档与视图').click()
-  await button('打开文件', page.locator('.tool-menu-list')).click()
+  await documentAction('打开文件')
   await openHistory(tab(path.basename(outside)), path.basename(outside))
   await history.getByText('当前文档不在 Git 工作区中。', { exact: true }).waitFor()
   await button('关闭', history).click()
@@ -170,6 +223,129 @@ try {
   assert.equal(await gitRun('ls-files', '--stage', '-z'), stagedEntries)
   assert.equal(await readFile(path.join(repo, note), 'utf8'), currentText)
   console.log('Keyboard history targets an unopened background document, handles untracked and non-repository documents, and leaves HEAD and working-tree files intact.')
+
+  await row(restoreNote).click()
+  await tab(restoreNote).and(selectedTab).waitFor()
+  await sourceLine(latestTimeline).waitFor()
+  await appendToSource(selectiveDraft.trim())
+  await assertSource(restoreCurrent + selectiveDraft)
+  await openHistory(tab(restoreNote), restoreNote)
+  await assertComparison(subject.restoreBase, oldScope, latestScope)
+
+  const hunkChoice = text => review.getByRole('listitem').filter({ hasText: text })
+    .getByRole('checkbox', { name: /^恢复第 \d+ 行的改动$/ })
+  const hunkChoices = review.getByRole('checkbox', { name: /^恢复第 \d+ 行的改动$/ })
+  const selectedHunks = review.getByRole('checkbox', { name: /^恢复第 \d+ 行的改动$/, checked: true })
+  const applySelection = button('恢复所选改动', review)
+  assert.equal(await hunkChoices.count(), 3)
+  assert.equal(await selectedHunks.count(), 0)
+  assert.equal(await applySelection.isDisabled(), true)
+  const unsavedHunk = hunkChoice(selectiveDraft.trim())
+  await unsavedHunk.check()
+  await applySelection.click()
+  const confirmSelection = page.getByRole('dialog', { name: '恢复所选改动？', exact: true })
+  await confirmSelection.getByText('所选改动包含未保存的修改，恢复会覆盖这些修改。', { exact: true }).waitFor()
+  assert.equal(await button('取消', confirmSelection).evaluate(element => element === document.activeElement), true)
+  await button('取消', confirmSelection).click()
+  await confirmSelection.waitFor({ state: 'hidden' })
+  assert.equal(await unsavedHunk.isChecked(), true)
+  assert.equal(await readFile(restorePath, 'utf8'), restoreCurrent)
+  await unsavedHunk.uncheck()
+  await hunkChoice(oldScope).check()
+  assert.equal(await selectedHunks.count(), 1)
+  if (process.env.SUJIAN_GIT_RESTORE_SCREENSHOT) {
+    await review.screenshot({ path: process.env.SUJIAN_GIT_RESTORE_SCREENSHOT })
+  }
+
+  await button('排版预览', review).click()
+  const preview = review.getByRole('checkbox', { name: '只预览选中的恢复', exact: true })
+  assert.equal(await preview.isChecked(), false)
+  await review.getByRole('region', { name: '当前稿', exact: true }).getByText(latestScope, { exact: true }).waitFor()
+  await preview.check()
+  const restored = review.getByRole('region', { name: '恢复后的文档', exact: true })
+  await restored.getByText(oldScope, { exact: true }).waitFor()
+  await restored.getByText(latestTimeline, { exact: true }).waitFor()
+  await restored.getByText(selectiveDraft.trim(), { exact: true }).waitFor()
+  await preview.uncheck()
+  await review.getByRole('region', { name: '当前稿', exact: true }).getByText(latestScope, { exact: true }).waitFor()
+  await applySelection.click()
+  await review.waitFor({ state: 'hidden' })
+  await assertSource(selectivelyRestored)
+  assert.equal(await readFile(restorePath, 'utf8'), restoreCurrent)
+  await documentAction('撤销本次审阅')
+  await assertSource(restoreCurrent + selectiveDraft)
+  assert.equal(await readFile(restorePath, 'utf8'), restoreCurrent)
+
+  await openHistory(row(restoreNote), restoreNote, true)
+  await assertComparison(subject.restoreBase, oldScope, latestScope, true)
+  await hunkChoice(oldScope).check()
+  await applySelection.click()
+  await review.waitFor({ state: 'hidden' })
+  await assertSource(selectivelyRestored)
+  await saveAndReopenRestore(selectivelyRestored)
+  console.log('Selected Git restoration previews and restores just the checked hunk, preserves unrelated committed and unsaved edits, supports undo, and survives save and reopen.')
+
+  await appendToSource(fullDraft.trim())
+  await assertSource(selectivelyRestored + fullDraft)
+  await openHistory(tab(restoreNote), restoreNote)
+  await assertComparison(subject.restoreBase, oldTimeline, latestTimeline)
+  const confirmFull = page.getByRole('dialog', { name: '恢复整个历史版本？', exact: true })
+  const requestFull = button('恢复整篇…', review)
+  await hunkChoice(oldTimeline).check()
+  await requestFull.click()
+  await confirmFull.getByText('当前稿有未保存的修改，整篇恢复会覆盖这些修改。', { exact: true }).waitFor()
+  assert.equal(await button('取消', confirmFull).evaluate(element => element === document.activeElement), true)
+  if (process.env.SUJIAN_GIT_RESTORE_CONFIRM_SCREENSHOT) {
+    await confirmFull.screenshot({ path: process.env.SUJIAN_GIT_RESTORE_CONFIRM_SCREENSHOT })
+  }
+  await button('取消', confirmFull).click()
+  await confirmFull.waitFor({ state: 'hidden' })
+  await review.getByLabel('当前稿', { exact: true }).filter({ hasText: fullDraft.trim() }).waitFor()
+  assert.equal(await hunkChoice(oldTimeline).isChecked(), true)
+  assert.equal(await readFile(restorePath, 'utf8'), selectivelyRestored)
+
+  await requestFull.click()
+  await button('确认恢复整篇', confirmFull).click()
+  await review.waitFor({ state: 'hidden' })
+  await assertSource(restoreBaseline)
+  assert.equal(await readFile(restorePath, 'utf8'), selectivelyRestored)
+  await tab(restoreNote).click({ button: 'right' })
+  const restoreTabMenu = page.getByRole('menu', { name: '操作 ' + restoreNote })
+  await restoreTabMenu.getByRole('menuitem', { name: '撤销本次审阅', exact: true }).click()
+  await assertSource(selectivelyRestored + fullDraft)
+  assert.equal(await readFile(restorePath, 'utf8'), selectivelyRestored)
+
+  await openHistory(tab(restoreNote), restoreNote)
+  await assertComparison(subject.restoreBase, oldTimeline, latestTimeline)
+  await requestFull.click()
+  await button('确认恢复整篇', confirmFull).click()
+  await review.waitFor({ state: 'hidden' })
+  await assertSource(restoreBaseline)
+  await saveAndReopenRestore(restoreBaseline)
+  assert.equal(await gitRun('rev-parse', 'HEAD'), head)
+  assert.equal(await gitRun('ls-files', '--stage', '-z'), stagedEntries)
+  console.log('Full Git restoration warns about unsaved changes, preserves checked hunks on cancel, and can be undone or saved without changing Git HEAD/index.')
+
+  await openHistory(tab(restoreNote), restoreNote)
+  await assertComparison(subject.restoreCurrent, latestScope, oldScope)
+  await hunkChoice(oldScope).check()
+  await requestFull.click()
+  const confirmRestore = button('确认恢复整篇', confirmFull)
+  await confirmRestore.waitFor()
+  assert.equal(await confirmRestore.isEnabled(), true)
+  const externalScope = '外部编辑器已更新试用范围。'
+  const externalText = restoreBaseline.replace(oldScope, externalScope)
+  await writeFile(restorePath, externalText)
+  await confirmFull.getByText('当前稿已改变。请取消并重新核对差异。', { exact: true }).waitFor()
+  assert.equal(await confirmRestore.isDisabled(), true)
+  await button('取消', confirmFull).click()
+  await review.getByLabel('当前稿', { exact: true }).filter({ hasText: externalScope }).waitFor()
+  assert.equal(await selectedHunks.count(), 0)
+  assert.equal(await applySelection.isDisabled(), true)
+  await button('结束审阅', review).click()
+  await assertSource(externalText)
+  assert.equal(await readFile(restorePath, 'utf8'), externalText)
+  console.log('An external file edit invalidates open full-restore confirmation and clears stale hunk selections.')
 } catch (error) {
   const alerts = await page.getByRole('alert').allTextContents()
   if (alerts.length) console.error('Desktop error:', alerts.join('\n'))

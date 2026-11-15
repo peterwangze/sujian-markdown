@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { applyReview, buildReview } from './model.js'
+import { applyReview, buildReview, selectionOverwritesUnsavedChanges } from './model.js'
 
 test('applies a selected range without changing untouched Markdown or mixed line endings', () => {
   const base = '# 标题\r\n\r\n正文 🌱  \n\n| 项目 |\r| 原表格 |'
@@ -91,4 +91,18 @@ test('handles an empty original or candidate, including an intentional full dele
 test('refuses comparisons above the document size limit', () => {
   assert.throws(() => buildReview('', '', 'x'.repeat(2_000_001)), RangeError)
   assert.throws(() => buildReview('', '', '\n'.repeat(80_001)), RangeError)
+})
+
+test('history restoration warns only when the chosen changes would affect unsaved work', () => {
+  const saved = '# 计划\n\n当前章节\n\n## 测试\n\n- 已保存用例\n\n```js\nconst count = 2\n```\n'
+  const draft = saved.replace('已保存用例', '未保存用例').replace('count = 2', 'count = 3')
+  const historical = saved.replace('当前章节', '历史章节').replace('count = 2', 'count = 1')
+  const review = buildReview(draft, draft, historical)
+  const [paragraph, list, code] = review.changes
+
+  assert.equal(selectionOverwritesUnsavedChanges(review, saved, [paragraph.id]), false)
+  assert.equal(applyReview(review, [paragraph.id]), draft.replace('当前章节', '历史章节'))
+  assert.equal(selectionOverwritesUnsavedChanges(review, saved, [list.id]), true)
+  assert.equal(selectionOverwritesUnsavedChanges(review, saved, [code.id]), true)
+  assert.equal(selectionOverwritesUnsavedChanges(review, draft, [list.id]), false)
 })
