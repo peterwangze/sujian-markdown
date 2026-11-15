@@ -83,6 +83,7 @@
 | `WF-03` 模板、规格与来源 | 从模板创建文档集，用含重复编号、缺引用的样例检查规格，再插入来源链接并跳转。 | 已通过模板、规格问题定位、仅允许已保存来源以及来源链接跳转。见 `check-review-workflows-desktop.mjs`。 |
 | `WF-04` 导入、导出与打印 | 用文件、工具栏与快捷键进入。导出 HTML/PDF/Word/EPUB 并实际打开结果，检查 PNG、幻灯片、自定义格式、打印与取消路径。 | 已通过 22 种格式产物检查、横向 Letter PDF、取消保存及源文件保护。DOCX、ODT、EPUB、HTML、RTF 五种导入往返通过。见 `check-delivery-desktop.mjs`、`check-markdown-desktop.mjs`。物理打印待实测。 |
 | `WF-05` 审阅选择与冲突 | 用复制底稿、粘贴、文件选择、更换修订稿、选择旧底稿和恢复默认底稿。制造仅当前稿变化及重叠变化，逐项、全采纳、全跳过并翻页。仅有可应用选择时允许应用，检查预览和原文。 | 实际桌面覆盖选择性应用与撤销。审阅模型单元覆盖三方重叠，批量、换底稿和分页的桌面路径待实测。见 `src/review/model.test.js`、`check-review-workflows-desktop.mjs`。 |
+| `WF-06` 文档的 Git 提交历史 | 在标签页右击已跟踪文档，核对提交说明及顺序，确认列表只含当前文档的提交。点选更名前的一版，在源码差异和排版预览中比较未保存的当前稿，再返回历史选另一版。用 `Shift+F10` 在文件树为未打开的文档执行同一操作，原文档保持为当前标签。 | Windows Electron 实测通过，包括未跟踪、仓库外两种提示，以及磁盘内容、暂存区和 HEAD 核对。后端真实 Git 测试另覆盖空仓库、删除记录、分页和 HEAD 移动后的旧分页。见 `check-git-document-history-desktop.mjs`、`electron/git-document-history.test.cjs`。 |
 
 ## Markdown 格式与渲染范围
 

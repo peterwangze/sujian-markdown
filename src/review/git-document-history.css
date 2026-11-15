@@ -1,0 +1,11 @@
+.modal.git-history-modal { width: min(640px, calc(100vw - 28px)); }
+.git-history-document { font-weight: 600; }
+.git-history-list { margin: 0; padding: 0; list-style: none; overflow: auto; max-height: min(50vh, 450px); border: 1px solid var(--border); border-radius: 8px; }
+.git-history-list li + li { border-top: 1px solid var(--border); }
+.git-history-entry { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 12px; text-align: left; }
+.git-history-entry:hover:not(:disabled) { background: var(--hover); }
+.git-history-entry:focus-visible { outline-offset: -2px; }
+.git-history-entry > svg { flex: none; color: var(--muted); }
+.git-history-description { display: grid; gap: 4px; flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.git-history-meta, .git-history-entry code { color: var(--muted); font-size: .86em; }
+.git-history-error { color: var(--danger-ink, var(--accent-ink)); overflow-wrap: anywhere; }

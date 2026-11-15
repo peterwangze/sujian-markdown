@@ -10,6 +10,7 @@ import { ExportDialog, FindBar, FolderSearch, GoToLine, NewFileDialog, QuickOpen
 import { CommandPalette } from './ui/CommandPalette.jsx'
 import { DocumentContextMenu } from './ui/DocumentContextMenu.jsx'
 import { GitWorkspaceDialog } from './ui/GitWorkspaceDialog.jsx'
+import { GitDocumentHistory } from './review/GitDocumentHistory.jsx'
 import { desktop, native } from './workspace/desktop.js'
 import { imageReferenceReplacement, listImageReferences, replaceImageReferences } from './workspace/image-reference.js'
 import { headings, localImageSources, MAX_LIVE_LENGTH, slug, updateImageSources, wordCount } from './workspace/text.js'
@@ -88,6 +89,7 @@ export default function App() {
   const requestedJump = useRef(null)
   const mode = active?.mode ?? settings.mode
   const reviewDoc = dialog?.type === 'review' ? docs.find(doc => doc.id === dialog.docId) : null
+  const historyDoc = dialog?.type === 'git-document-history' ? docs.find(doc => doc.id === dialog.docId && doc.path === dialog.expectedPath) : null
   const canUndoReview = !!active?.reviewUndo && active.text === active.reviewUndo.after
   const contextDoc = context && (workspace.getDocument(context.item.id) ?? workspace.getDocumentByPath(context.item.path))
   const selectedTheme = resolveTheme(settings.theme, systemDark)
@@ -111,10 +113,11 @@ export default function App() {
   }
 
   useEffect(() => {
-    if ((dialog?.type === 'review' && !reviewDoc) || (dialog?.type === 'source-link' && active?.id !== dialog.docId)) {
+    if ((dialog?.type === 'review' && !reviewDoc) || (dialog?.type === 'git-document-history' && !historyDoc) ||
+        (dialog?.type === 'source-link' && active?.id !== dialog.docId)) {
       setDialog(previous => previous === dialog ? null : previous)
     }
-  }, [active?.id, dialog, reviewDoc])
+  }, [active?.id, dialog, historyDoc, reviewDoc])
 
   useEffect(() => { if (dialog) setContext(null) }, [dialog])
 
@@ -330,13 +333,24 @@ export default function App() {
     return true
   }
 
-  function openReview(doc, initialCandidate, initialGitBase) {
+  function openReview(doc, initialCandidate, initialGitBase, gitHistoryPage) {
     if (!doc) return
     const currentText = activeId.current === doc.id ? flushEditor() : undefined
     setDialog({
       type: 'review', docId: doc.id, baseText: currentText ?? doc.text,
-      expectedPath: doc.path, initialCandidate, initialGitBase, requestId: crypto.randomUUID(),
+      expectedPath: doc.path, initialCandidate, initialGitBase, gitHistoryPage, requestId: crypto.randomUUID(),
     })
+  }
+
+  function openGitDocumentHistory(doc, initialPage) {
+    if (!doc?.path) return
+    setDialog({ type: 'git-document-history', docId: doc.id, expectedPath: doc.path, initialPage })
+  }
+
+  function compareDocumentRevision(baseline, page) {
+    const doc = workspace.getDocument(dialog.docId)
+    if (doc?.path !== dialog.expectedPath) throw new Error('文档位置已改变，请重新打开提交历史。')
+    openReview(doc, undefined, baseline, page)
   }
 
   function unsavedGitDocuments(root) {
@@ -653,6 +667,7 @@ export default function App() {
       settings.pinned.includes(item.path) ? ['unpin', '取消固定'] : ['pin', '固定文件夹']],
       ...(item.path && desktop.gitWorkspaceStatus ? [[['git-workspace', 'Git 版本管理…']]] : []), fileActions]
     const documentActions = [['review', '审阅修订稿']]
+    if (item.path && desktop.listGitDocumentHistory) documentActions.push(['git-document-history', 'Git 提交历史'])
     if (contextDoc?.reviewUndo && contextDoc.text === contextDoc.reviewUndo.after) documentActions.push(['undo-review', '撤销本次审阅'])
     if (item.path && desktop.collectImages) documentActions.push(['collect-document-images', '收拢图片到文档资源目录'])
     if (item.kind === 'editor') {
@@ -711,6 +726,10 @@ export default function App() {
     if (key === 'git-workspace' && item.kind === 'directory' && item.path) {
       flushEditor()
       setDialog({ type: 'git-workspace', directory: item.path })
+      return
+    }
+    if (key === 'git-document-history' && item.path) {
+      run(async () => openGitDocumentHistory(doc ?? await workspace.openPath(item.path, { activate: false })))
       return
     }
     if (key === 'review') {
@@ -846,8 +865,12 @@ export default function App() {
       unsaved={unsavedGitDocuments} saveDocuments={saveGitDocuments}
       compareCurrent={pathWithinFolder(active?.path, dialog.directory) ? compareGitHead : null}
       openWorkspace={root => { configure({ workspace: root }); closeDialog() }} onClose={closeDialog}/>}
+    {historyDoc && <GitDocumentHistory key={historyDoc.path} name={historyDoc.name} documentPath={historyDoc.path}
+      initialPage={dialog.initialPage} listHistory={desktop.listGitDocumentHistory} readRevision={desktop.readGitDocumentRevision}
+      onCompare={compareDocumentRevision} onClose={closeDialog}/>}
     {reviewDoc && <Suspense fallback={null}>
       <ReviewDialog key={dialog.requestId} name={reviewDoc.name} baseText={dialog.baseText} currentText={reviewDoc.text} initialGitBase={dialog.initialGitBase}
+        onGitHistory={dialog.gitHistoryPage && reviewDoc.path === dialog.expectedPath ? () => openGitDocumentHistory(reviewDoc, dialog.gitHistoryPage) : undefined}
         diskText={reviewDoc.conflict?.document?.text ?? null} diskConflict={!!reviewDoc.conflict}
         initialCandidate={dialog.initialCandidate}
         compareGit={reviewDoc.path && desktop.readGitBaseline ? ref => desktop.readGitBaseline({ documentPath: reviewDoc.path, ref }) : undefined}

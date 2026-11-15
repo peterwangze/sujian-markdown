@@ -88,7 +88,7 @@ function RenderedPane({ title, text, theme }) {
 }
 
 export function ReviewDialog({ name, baseText, currentText, diskText, diskConflict, initialCandidate, initialGitBase,
-  compareGit, chooseCandidate, copyBase, theme, onApply, onClose }) {
+  compareGit, chooseCandidate, copyBase, theme, onApply, onClose, onGitHistory }) {
   const [draft, setDraft] = useState('')
   const [candidate, setCandidate] = useState(() => normalizeCandidate(initialCandidate ?? null))
   const [importedBase, setImportedBase] = useState(null)
@@ -255,7 +255,9 @@ export function ReviewDialog({ name, baseText, currentText, diskText, diskConfli
       {importedBase && <button type="button" className="small-button" disabled={busy}
         onClick={() => stageFile(null, 'baseline')}>恢复默认底稿</button>}
     </div>}
-    {comparing ? <form className="review-git" onSubmit={loadGit}>
+    {comparing ? onGitHistory ? <div className="review-git">
+      {gitBase && <span className="review-origin" title={gitBase.name}>{gitBase.name}</span>}
+    </div> : <form className="review-git" onSubmit={loadGit}>
       <label htmlFor="review-git-ref">Git 版本</label>
       <input id="review-git-ref" value={gitRef} onChange={event => setGitRef(event.target.value)} disabled={busy} spellCheck="false"/>
       <button className="small-button" type="submit" disabled={busy || !gitRef.trim()}>比较 Git 版本</button>
@@ -307,6 +309,7 @@ export function ReviewDialog({ name, baseText, currentText, diskText, diskConfli
         {comparing ? `${changes.length} 处差异` : `已采纳 ${selected.length} · 已跳过 ${skipped}${conflicts ? ` · ${conflicts} 处冲突` : ''}`}
       </p>}
       {busy && <span role="status">处理中…</span>}
+      {onGitHistory && <button type="button" onClick={onGitHistory} disabled={busy}>返回提交历史</button>}
       <button type="button" onClick={close} disabled={busy}>结束审阅</button>
       {!comparing && !!candidate && <button type="button" className="primary" onClick={apply}
         disabled={busy || diskConflict || !selected.length}>应用已采纳改动</button>}

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { desktop } from './desktop.js'
 import { guide } from './example.js'
 import { MAX_LIVE_LENGTH } from './text.js'
@@ -338,7 +338,7 @@ export function useWorkspace(notify, beforeClose) {
   }, [append, applyDiskChange, commit, configure, notify, recordRecent])
 
   const paths = JSON.stringify(state.docs.map(doc => doc.path).filter(Boolean))
-  useEffect(() => { desktop.setWatchedFiles(JSON.parse(paths)) }, [paths])
+  useLayoutEffect(() => { desktop.setWatchedFiles(JSON.parse(paths)) }, [paths])
 
   useEffect(() => {
     if (!ready) return

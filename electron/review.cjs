@@ -103,32 +103,31 @@ function gitFailure(error, fallback) {
   return new Error(fallback, { cause: error });
 }
 
-async function readGitBaseline({ documentPath, ref = 'HEAD' }) {
+async function gitDocumentContext(documentPath, { allowOutsideRepository = false } = {}) {
   if (typeof documentPath !== 'string' || !path.isAbsolute(documentPath) || !documentExtension.test(documentPath)) {
     throw new Error('请先打开一个 Git 工作区中的 Markdown 文档。');
   }
-  if (typeof ref !== 'string' || !ref || ref.length > 512 || /^-/.test(ref) || /[\u0000-\u0020\u007f:]/.test(ref)) {
-    throw new Error('请输入有效的 Git 分支名、标签或提交版本。');
-  }
 
-  const filePath = await fs.realpath(documentPath);
-  if (pathKey(filePath) !== pathKey(documentPath) || !(await fs.stat(filePath)).isFile()) {
+  const filePath = await fs.realpath(documentPath).catch(() => null);
+  if (!filePath || pathKey(filePath) !== pathKey(documentPath) || !(await fs.stat(filePath).catch(() => null))?.isFile()) {
     throw new Error('文件位置已更改，请重新打开后再读取 Git 版本。');
   }
   const executable = await findGit();
-  const environment = gitEnvironment();
-  const git = async (directory, args, fallback) => {
-    try {
-      const { stdout } = await runFile(executable, [
-        '-C', directory, '--no-pager', '--literal-pathspecs', '-c', 'protocol.allow=never', ...args,
-      ], { env: environment, encoding: 'buffer', windowsHide: true, timeout: 7000, maxBuffer: maxReviewBytes + 1024 });
-      return stdout;
-    } catch (error) {
-      throw gitFailure(error, fallback);
-    }
+  const environment = { ...gitEnvironment(), LANG: 'C', LC_ALL: 'C' };
+  const runGit = async (directory, args, { timeout = 7000, maxBuffer = maxReviewBytes + 1024 } = {}) => {
+    const { stdout } = await runFile(executable, [
+      '-C', directory, '--no-pager', '--literal-pathspecs', '-c', 'protocol.allow=never', '-c', 'core.fsmonitor=false', ...args,
+    ], { env: environment, encoding: 'buffer', windowsHide: true, timeout, maxBuffer });
+    return stdout;
   };
 
-  const rootOutput = await git(path.dirname(filePath), ['rev-parse', '--show-toplevel'], '该文档不在可读取的 Git 工作区中。');
+  let rootOutput;
+  try {
+    rootOutput = await runGit(path.dirname(filePath), ['rev-parse', '--show-toplevel']);
+  } catch (error) {
+    if (allowOutsideRepository && error.code === 128 && /not a git repository|must be run in a work tree/i.test(error.stderr)) return null;
+    throw gitFailure(error, '该文档不在可读取的 Git 工作区中。');
+  }
   const rootName = rootOutput.toString('utf8').replace(/\r?\n$/, '');
   if (!path.isAbsolute(rootName)) throw new Error('无法确定 Git 工作区路径。');
   const root = await fs.realpath(rootName);
@@ -136,11 +135,36 @@ async function readGitBaseline({ documentPath, ref = 'HEAD' }) {
   if (!relative || relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
     throw new Error('所选文档不在 Git 工作区内。');
   }
-  const repoPath = relative.split(path.sep).join('/');
-  const commit = (await git(root, ['rev-parse', '--verify', '--end-of-options', `${ref}^{commit}`], '找不到指定的 Git 提交版本。')).toString('utf8').trim();
+  return { repoPath: relative.split(path.sep).join('/'), runGit: (args, options) => runGit(root, args, options) };
+}
+
+async function readGitBlob(runGit, blob, name) {
+  let bytes;
+  try {
+    bytes = await runGit(['cat-file', 'blob', blob]);
+  } catch (error) {
+    throw gitFailure(error, '无法读取本地 Git 对象。');
+  }
+  if (bytes.length > maxReviewBytes) throw new Error('修订稿审阅支持最大 4 MiB 的文档。');
+  try {
+    return { text: decode(bytes).text, name };
+  } catch {
+    throw new Error('无法识别 Git 版本的文件编码，请使用 UTF-8 或带 BOM 的 UTF-16。');
+  }
+}
+
+async function readGitBaseline({ documentPath, ref = 'HEAD' }) {
+  if (typeof ref !== 'string' || !ref || ref.length > 512 || /^-/.test(ref) || /[\u0000-\u0020\u007f:]/.test(ref)) {
+    throw new Error('请输入有效的 Git 分支名、标签或提交版本。');
+  }
+  const { repoPath, runGit } = await gitDocumentContext(documentPath);
+  const git = async (args, fallback) => {
+    try { return await runGit(args); } catch (error) { throw gitFailure(error, fallback); }
+  };
+  const commit = (await git(['rev-parse', '--verify', '--end-of-options', `${ref}^{commit}`], '找不到指定的 Git 提交版本。')).toString('utf8').trim();
   if (!objectId.test(commit)) throw new Error('Git 返回了无法识别的提交版本。');
 
-  const entry = await git(root, ['ls-tree', '-z', '--full-tree', commit, '--', repoPath], '无法读取该 Git 版本中的文档。');
+  const entry = await git(['ls-tree', '-z', '--full-tree', commit, '--', repoPath], '无法读取该 Git 版本中的文档。');
   const tab = entry.indexOf(9);
   const end = entry.indexOf(0, tab + 1);
   const metadata = tab > 0 ? entry.subarray(0, tab).toString('ascii').split(' ') : [];
@@ -149,13 +173,8 @@ async function readGitBaseline({ documentPath, ref = 'HEAD' }) {
     !['100644', '100755'].includes(mode) || type !== 'blob' || !objectId.test(blob ?? '')) {
     throw new Error('此文档在指定 Git 版本中不存在，或不是普通文件。');
   }
-  const bytes = await git(root, ['cat-file', 'blob', blob], '无法读取本地 Git 对象。');
-  if (bytes.length > maxReviewBytes) throw new Error('修订稿审阅支持最大 4 MiB 的文档。');
-  try {
-    return { text: decode(bytes).text, name: `${ref} · ${commit.slice(0, 8)}` };
-  } catch {
-    throw new Error('无法识别 Git 版本的文件编码，请使用 UTF-8 或带 BOM 的 UTF-16。');
-  }
+  return readGitBlob(runGit, blob, `${ref} · ${commit.slice(0, 8)}`);
 }
 
-module.exports = { applicationArguments, findGit, gitEnvironment, materializeCommand, parseCommand, readCandidate, readGitBaseline, readReviewSnapshot };
+module.exports = { applicationArguments, findGit, gitDocumentContext, gitEnvironment, materializeCommand, objectId,
+  parseCommand, readCandidate, readGitBaseline, readGitBlob, readReviewSnapshot };

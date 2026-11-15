@@ -40,6 +40,8 @@ contextBridge.exposeInMainWorld('sujian', {
   chooseReviewCandidate: invoke('choose-review-candidate'),
   readReviewSnapshot: invoke('read-review-snapshot'),
   readGitBaseline: invoke('read-git-baseline'),
+  listGitDocumentHistory: invoke('git-document-history'),
+  readGitDocumentRevision: invoke('read-git-document-revision'),
   gitWorkspaceStatus: invoke('git-workspace-status'),
   initGitWorkspace: invoke('git-workspace-init'),
   commitGitWorkspace: invoke('git-workspace-commit'),
