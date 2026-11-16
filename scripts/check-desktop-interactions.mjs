@@ -14,6 +14,7 @@ const suites = [
   'check-sidebar-tree-desktop',
   'check-window-interactions-desktop',
   'check-settings-desktop',
+  'check-updates-desktop',
   'check-review-workflows-desktop',
   'check-git-workspace-desktop',
   'check-git-document-history-desktop',

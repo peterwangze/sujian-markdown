@@ -182,9 +182,6 @@ a { color: var(--accent-ink); }
 .status-rule { width: 1px; height: 13px; margin: 0 4px; background: var(--border); }
 .statusbar button { color: var(--accent-ink); }
 .status-version { flex: none; padding: 3px 6px; white-space: nowrap; font-variant-numeric: tabular-nums; }
-.about-version { display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px 14px; margin: 0; }
-.about-version dt { color: var(--muted); }
-.about-version dd { margin: 0; color: var(--ink); font: 600 18px/1.4 var(--mono); user-select: all; }
 .find-bar, .conflict, .large-note { background: var(--chrome); padding: 7px 15px; border-bottom: 1px solid var(--border); color: var(--muted); }
 .find-bar form, .find-options, .conflict { display: flex; align-items: center; gap: 8px; }
 .find-bar form + form { margin-top: 5px; }

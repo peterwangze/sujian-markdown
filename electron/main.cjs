@@ -12,6 +12,7 @@ const { acceptedExtensions: fontExtensions, createFontStore, fontRoute } = requi
 const { commitGitWorkspace, initGitWorkspace, inspectGitWorkspace } = require('./git-workspace.cjs');
 const { listGitDocumentHistory, readGitDocumentRevision } = require('./git-document-history.cjs');
 const { createStorage } = require('./storage.cjs');
+const { createUpdater } = require('./updates.cjs');
 const { createWatcher } = require('./watcher.cjs');
 const { findDocuments, listDirectory, searchDirectory } = require('./workspace.cjs');
 const { applicationArguments, materializeCommand, parseCommand, readCandidate, readGitBaseline, readReviewSnapshot } = require('./review.cjs');
@@ -208,6 +209,8 @@ async function createWindow(initialPaths = [], commands = []) {
   window.on('closed', () => {
     state.watcher.dispose();
     state.search?.abort();
+    state.updateCheck?.abort();
+    state.updateDownload?.abort();
     states.delete(windowId);
     if (quitting && states.size === 0) app.quit();
   });
@@ -288,6 +291,48 @@ function installIpc({ assets, conversion, fonts, storage, operations }) {
     return callback(state, ...args);
   });
   handle('app-version', () => app.getVersion());
+  handle('check-for-updates', async state => {
+    if (state.updateCheck || state.updateDownload) return { status: 'error', message: '更新检查或下载正在进行。' };
+    const task = new AbortController();
+    state.updateCheck = task;
+    try {
+      const arch = app.runningUnderARM64Translation ? 'arm64' : process.arch;
+      state.updater ??= createUpdater({
+        currentVersion: app.getVersion(), arch,
+        fetchImpl: (url, options) => globalThis.fetch(url, options),
+      });
+      return { ...await state.updater.check({ signal: task.signal }), platform: process.platform, arch };
+    } catch (error) {
+      return { status: 'error', message: error.message };
+    } finally {
+      state.updateCheck = null;
+    }
+  });
+  handle('download-update', async (state, assetName) => {
+    if (state.updateCheck || state.updateDownload) return { status: 'error', message: '更新检查或下载正在进行。' };
+    if (!state.updater) return { status: 'error', message: '请先检查更新。' };
+    const task = new AbortController();
+    state.updateDownload = task;
+    let lastProgressAt = 0;
+    try {
+      const result = await state.updater.download({
+        assetName, directory: app.getPath('downloads'), signal: task.signal,
+        onProgress: progress => {
+          const now = Date.now();
+          if (state.window.isDestroyed() || (now - lastProgressAt < 150 && progress.downloadedBytes !== progress.totalBytes)) return;
+          lastProgressAt = now;
+          state.window.webContents.send('sujian:update-download-progress', progress);
+        },
+      });
+      return { status: 'completed', ...result };
+    } catch (error) {
+      if (task.signal.aborted) return { status: 'cancelled' };
+      return { status: 'error', message: error.message };
+    } finally {
+      state.updateDownload = null;
+    }
+  });
+  handle('cancel-update-download', state => { state.updateDownload?.abort(); });
   handle('open-files-dialog', async ({ window }) => {
     const selected = await dialog.showOpenDialog(window, { title: '打开 Markdown 文档', properties: ['openFile', 'multiSelections'], filters });
     if (selected.canceled) return [];

@@ -1,0 +1,30 @@
+.about-dialog.has-update { width: min(560px, calc(100vw - 36px)); }
+.about-version { display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px 14px; margin: 0; }
+.about-version dt { color: var(--muted); }
+.about-version dd { margin: 0; color: var(--ink); font: 600 18px/1.4 var(--mono); user-select: all; }
+
+.update-result { display: grid; gap: 12px; margin-top: 14px; border-top: 1px solid var(--border); padding-top: 14px; }
+.update-result h3 { margin: 0; font-size: 14px; }
+.update-result > h3 { color: var(--accent-ink); font-size: 16px; }
+.update-result p { margin: 0; }
+.update-message { margin: 10px 0 0; overflow-wrap: anywhere; }
+.update-error { color: var(--accent-ink); }
+
+.update-notes { display: grid; gap: 6px; }
+.update-notes-content { max-height: min(32vh, 260px); min-height: 28px; overflow: auto; padding: 10px 12px; border: 1px solid var(--border); border-radius: 7px; background: var(--canvas); }
+.update-notes-content .vditor-reset { color: var(--ink); background: transparent; font-family: var(--sans); font-size: 13px; overflow-wrap: anywhere; }
+.update-notes-content .vditor-reset :is(h1, h2, h3) { margin-block: .65em .45em; font-size: 1.12em; }
+.update-notes-content .vditor-reset > :first-child { margin-top: 0; }
+.update-notes-content .vditor-reset > :last-child { margin-bottom: 0; }
+.update-notes-content pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+
+.update-assets { display: grid; gap: 7px; margin: 0; padding: 0; list-style: none; }
+.update-assets li, .update-complete { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+.update-assets li { padding: 9px 10px; border: 1px solid var(--border); border-radius: 7px; }
+.update-assets li > div, .update-complete > div { display: grid; gap: 3px; min-width: 0; }
+.update-assets li span, .update-complete span, .update-progress span { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+.update-assets button { flex: none; }
+.update-progress { display: grid; gap: 6px; }
+.update-progress > div { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.update-progress progress { width: 100%; accent-color: var(--accent); }
+.about-dialog footer { flex-wrap: wrap; }

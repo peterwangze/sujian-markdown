@@ -3,6 +3,7 @@ import { FileText, Plus, CircleCheck, AlertTriangle, FolderOpen, ChevronDown, Bo
 import { Editor, renderDocument } from './editor/index.js'
 import { formatMarkdown } from './editor/format.js'
 import { imageAltFromAddress } from './editor/image-paste.js'
+import { AboutDialog } from './ui/AboutDialog.jsx'
 import { IconButton, Modal, TabStrip } from './ui/Controls.jsx'
 import { Sidebar } from './ui/Sidebar.jsx'
 import { Toolbar } from './ui/Toolbar.jsx'
@@ -23,7 +24,6 @@ import { applyTheme, resolveTheme } from './theme/themes.js'
 
 const ReviewDialog = lazy(() => import('./review/ReviewDialog.jsx'))
 const builtVersion = typeof __SUJIAN_VERSION__ === 'string' ? __SUJIAN_VERSION__ : ''
-const releaseHistory = 'https://github.com/peterwangze/sujian-markdown/releases'
 
 const visualExports = new Set(['pdf', 'html', 'html-plain', 'png', 'docx', 'epub', 'print'])
 const fileActions = [
@@ -887,10 +887,7 @@ export default function App() {
     {message && <div className={'toast ' + (message.error ? 'error' : '')} role={message.error ? 'alert' : 'status'}>
       {message.error ? <AlertTriangle size={17}/> : <CircleCheck size={17}/>} {message.text}
     </div>}
-    {dialog?.type === 'about' && <Modal title="关于素笺" onClose={closeDialog}>
-      <dl className="about-version"><dt>当前版本</dt><dd>{versionLabel || '暂未取得版本信息'}</dd></dl>
-      <footer><button type="button" onClick={() => run(() => desktop.openExternal(releaseHistory))}>查看发布记录</button></footer>
-    </Modal>}
+    <AboutDialog open={dialog?.type === 'about'} versionLabel={versionLabel} theme={renderTheme} onClose={closeDialog} run={run}/>
     {dialog?.type === 'git-workspace' && <GitWorkspaceDialog directory={dialog.directory} workspacePath={settings.workspace}
       inspect={desktop.gitWorkspaceStatus} initialize={desktop.initGitWorkspace} commit={commitGitChanges}
       unsaved={unsavedGitDocuments} saveDocuments={saveGitDocuments}

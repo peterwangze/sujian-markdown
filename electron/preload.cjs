@@ -34,6 +34,10 @@ function onBeforeClose(callback) {
 contextBridge.exposeInMainWorld('sujian', {
   platform: process.platform,
   appVersion: invoke('app-version'),
+  checkForUpdates: invoke('check-for-updates'),
+  downloadUpdate: invoke('download-update'),
+  cancelUpdateDownload: invoke('cancel-update-download'),
+  onUpdateDownloadProgress: subscribe('update-download-progress'),
   openFiles: invoke('open-files-dialog'),
   openPath: invoke('open-path'),
   initialDocuments: invoke('initial-documents'),
