@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
+import { Star } from 'lucide-react'
 import { renderPreview } from '../editor/render-document.js'
 import { desktop } from '../workspace/desktop.js'
 import { Modal } from './Controls.jsx'
 import './about-dialog.css'
 
-const releaseHistory = 'https://github.com/peterwangze/sujian-markdown/releases'
+const repositoryUrl = 'https://github.com/peterwangze/sujian-markdown'
+const releaseHistory = `${repositoryUrl}/releases`
 const platformNames = { win32: 'Windows', darwin: 'macOS', linux: 'Linux' }
 const fileSizeFormat = new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 1 })
 
@@ -109,6 +111,9 @@ export function AboutDialog({ open, versionLabel, theme, onClose, run }) {
       </div>}
     </section>}
     <footer>
+      <button type="button" className="about-star" onClick={() => run(() => desktop.openExternal(repositoryUrl))}>
+        <Star size={14} aria-hidden="true"/>在 GitHub 上点星
+      </button>
       <button type="button" onClick={() => run(() => desktop.openExternal(releaseHistory))}>查看发布记录</button>
       {supportsUpdates && <button type="button" className={hasUpdate ? '' : 'primary'} disabled={checking || downloading}
         onClick={() => void checkForUpdates()}>检查更新</button>}

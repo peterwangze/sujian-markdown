@@ -76,14 +76,18 @@ async function assertAboutVersion() {
   await versionButton.press('Enter')
   const external = await app.evaluateHandle(({ shell }) => {
     const openExternal = shell.openExternal
+    const addresses = []
     let timeout
-    const openedAddress = new Promise(resolve => {
-      timeout = setTimeout(resolve, 10_000, null)
+    const openedAddresses = new Promise(resolve => {
+      timeout = setTimeout(() => resolve(addresses), 10_000)
       timeout.unref()
-      shell.openExternal = async address => { resolve(address) }
+      shell.openExternal = async address => {
+        addresses.push(address)
+        if (addresses.length === 2) resolve(addresses)
+      }
     })
     return {
-      openedAddress,
+      openedAddresses,
       restore() {
         clearTimeout(timeout)
         shell.openExternal = openExternal
@@ -92,14 +96,15 @@ async function assertAboutVersion() {
   })
   try {
     await button('查看发布记录', about).click()
-    assert.equal(await external.evaluate(capture => capture.openedAddress), homepage + '/releases')
+    await button('在 GitHub 上点星', about).press('Enter')
+    assert.deepEqual(await external.evaluate(capture => capture.openedAddresses), [homepage + '/releases', homepage])
   } finally {
     await external.evaluate(capture => capture.restore())
     await external.dispose()
   }
   await button('关闭', about).click()
   await about.waitFor({ state: 'hidden' })
-  console.log('The status bar and About show the running Electron app version, and the release history opens through the desktop link handler.')
+  console.log('About shows the running version and opens release history and the GitHub repository through the desktop link handler.')
 }
 
 async function documentAction(name) {
