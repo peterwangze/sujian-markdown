@@ -78,6 +78,18 @@ async function assertGitInlineDiff(baselineLine, baselineChanges) {
   assert.deepEqual(await current.locator('ins.review-inline-change').allTextContents(), ['prod', '。'])
 }
 
+async function assertGitRenderedDiff(baselineChanges) {
+  await button('排版预览', review).click()
+  const baseline = review.getByRole('region', { name: 'Git 基线', exact: true })
+  const current = review.getByRole('region', { name: '当前稿', exact: true })
+  await baseline.locator('code del.review-rendered-change').filter({ hasText: baselineChanges[0] }).waitFor()
+  await current.locator('code ins.review-rendered-change').filter({ hasText: 'prod' }).waitFor()
+  assert.deepEqual(await baseline.locator('del.review-rendered-change').allTextContents(), baselineChanges)
+  assert.deepEqual(await current.locator('ins.review-rendered-change').allTextContents(), ['prod', '。'])
+  assert.equal(await baseline.locator('.review-inline-change').count(), 0)
+  assert.equal(await current.locator('.review-inline-change').count(), 0)
+}
+
 async function openFileComparison() {
   await documentAction('审阅修订稿')
   await button('选择旧底稿', review).click()
@@ -149,14 +161,12 @@ try {
   await button('Git 比较', review).click()
   await button('比较 Git 版本', review).click()
   await assertGitInlineDiff(gitHeadLine, ['beta', '！'])
+  await assertGitRenderedDiff(['beta', '！'])
   await review.getByLabel('Git 版本', { exact: true }).fill('review-base')
   await button('比较 Git 版本', review).click()
   await review.getByText(/^review-base · [a-f0-9]{8}$/).waitFor()
   await assertGitInlineDiff(gitTagLine, ['test', '？'])
-  await button('排版预览', review).click()
-  await review.getByRole('region', { name: 'Git 基线', exact: true }).getByText('test', { exact: true }).waitFor()
-  await review.getByRole('region', { name: '当前稿', exact: true }).getByText('prod', { exact: true }).waitFor()
-  assert.equal(await review.locator('.review-inline-change').count(), 0)
+  await assertGitRenderedDiff(['test', '？'])
   assert.equal(await button('应用已采纳改动', review).count(), 0)
   await button('结束审阅', review).click()
   assert.equal(await readFile(target, 'utf8'), original)

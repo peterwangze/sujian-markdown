@@ -18,6 +18,8 @@ const background = '验收记录.md'
 const untracked = '临时构思.md'
 const restoreNote = '发布说明.md'
 const restorePath = path.join(repo, restoreNote)
+const longNote = '交接指南.md'
+const longPath = path.join(repo, longNote)
 const outside = path.join(working, '仓库外笔记.md')
 const subject = {
   first: '建立产品计划初稿',
@@ -27,6 +29,8 @@ const subject = {
   background: '补充验收记录',
   restoreBase: '确定试用发布说明',
   restoreCurrent: '更新发布说明的范围和节奏',
+  longBase: '编写长期交接指南',
+  longCurrent: '更新交接日期和归档状态',
   unrelated: '更新项目索引',
 }
 const firstText = '# 产品计划\n\n先验证基础编写流程。\n'
@@ -37,19 +41,36 @@ const backgroundOriginal = '# 验收记录\n\n初稿中记录了三项检查。\
 const backgroundText = '# 验收记录\n\n当前记录覆盖五项检查。\n'
 const oldScope = '首批试用覆盖写作与导出。'
 const latestScope = '首批试用只覆盖写作。'
+const oldGuide = '阅读 **试用指南**，并查看 [报名入口](https://example.com/preview)。'
+const latestGuide = '阅读 **发布指南**，并查看 [反馈入口](https://example.com/preview)。'
+const unchangedGuide = '发布说明中的平台要求继续适用。'
 const oldTimeline = '每周收集一次试用反馈。'
 const latestTimeline = '首周每天收集一次试用反馈。'
 const removedLine = '- 首轮报名须提交纸质回执。'
+const oldListItem = '现场收集反馈。'
+const latestListItem = '线上收集反馈。'
+const oldTableRow = '| 回访 | 每周 |'
+const latestTableRow = '| 回访 | 每天 |'
 const restoreBaseline = [
-  '# 发布说明', '', '## 试用范围', '', oldScope, '', '## 反馈节奏', '', oldTimeline, '',
-  '- 报名和回访通过项目页面安排。', removedLine, '- 试用期间保留原有的本地保存流程。', '',
+  '# 发布说明', '', '## 试用范围', '', oldScope, '', oldGuide, '', unchangedGuide, '',
+  '## 反馈节奏', '', oldTimeline, '', '- 报名和回访通过项目页面安排。', removedLine,
+  '- 试用期间保留原有的本地保存流程。', '- ' + oldListItem, '',
+  '| 项目 | 频率 |', '| --- | --- |', oldTableRow, '',
   '下一批试用安排将单独公布。', '',
 ].join('\n')
-const restoreCurrent = restoreBaseline.replace(oldScope, latestScope).replace(oldTimeline, latestTimeline)
-  .replace(removedLine + '\n', '')
+const restoreCurrent = restoreBaseline.replace(oldScope, latestScope).replace(oldGuide, latestGuide)
+  .replace(oldTimeline, latestTimeline).replace(removedLine + '\n', '')
+  .replace(oldListItem, latestListItem).replace(oldTableRow, latestTableRow)
 const selectiveDraft = '\n支持渠道继续收集安装反馈。\n'
 const fullDraft = '\n周五再确认下一批试用名单。\n'
 const selectivelyRestored = restoreCurrent.replace(latestScope, oldScope) + selectiveDraft
+const longParagraph = index => `第 ${index} 条交接说明用于记录工作区的常规资料。`
+const longBaseline = [
+  '# 交接指南', '', Array.from({ length: 720 }, (_, index) => longParagraph(index + 1)).join('\n\n'), '',
+  '交接日期定在周三。', '', '- 后备地区使用测试库。', '',
+  '| 项目 | 状态 |', '| --- | --- |', '| 归档 | 待完成 |', '',
+].join('\n')
+const longCurrent = longBaseline.replace('周三', '周五').replace('测试库', '归档库').replace('待完成', '已完成')
 const executablePath = process.env.SUJIAN_QA_EXE
 const git = promisify(execFile)
 const env = Object.fromEntries(Object.entries(process.env).filter(([name]) => !/^GIT_/i.test(name)))
@@ -93,6 +114,10 @@ await writeFile(restorePath, restoreBaseline)
 await commit(subject.restoreBase)
 await writeFile(restorePath, restoreCurrent)
 await commit(subject.restoreCurrent)
+await writeFile(longPath, longBaseline)
+await commit(subject.longBase)
+await writeFile(longPath, longCurrent)
+await commit(subject.longCurrent)
 await writeFile(path.join(repo, '索引.md'), '# 项目索引\n\n补充导航项。\n')
 const head = await commit(subject.unrelated)
 await writeFile(path.join(repo, untracked), '# 临时构思\n')
@@ -267,7 +292,7 @@ try {
   const hunkChoices = review.getByRole('checkbox', { name: /^恢复第 \d+ 行的改动$/ })
   const selectedHunks = review.getByRole('checkbox', { name: /^恢复第 \d+ 行的改动$/, checked: true })
   const applySelection = button('恢复所选改动', review)
-  assert.equal(await hunkChoices.count(), 4)
+  assert.equal(await hunkChoices.count(), 7)
   assert.equal(await selectedHunks.count(), 0)
   assert.equal(await applySelection.isDisabled(), true)
   const unsavedHunk = hunkChoice(selectiveDraft.trim())
@@ -291,15 +316,57 @@ try {
   await button('排版预览', review).click()
   const preview = review.getByRole('checkbox', { name: '只预览选中的恢复', exact: true })
   assert.equal(await preview.isChecked(), false)
-  await review.getByRole('region', { name: '当前稿', exact: true }).getByText(latestScope, { exact: true }).waitFor()
+  const baselinePane = review.getByRole('region', { name: 'Git 基线', exact: true })
+  const draftPane = review.getByRole('region', { name: '当前稿', exact: true })
+  const previewDeleted = 'del.review-rendered-change'
+  const previewInserted = 'ins.review-rendered-change'
+  const renderedCases = [
+    { pane: baselinePane, mark: previewDeleted, scope: oldScope, scopeChange: '与导出', bold: '试用指南', boldChange: '试用',
+      link: '报名入口', linkChange: '报名', item: oldListItem, itemChange: '现场', cell: '每周', cellChange: '周' },
+    { pane: draftPane, mark: previewInserted, scope: latestScope, scopeChange: '只', bold: '发布指南', boldChange: '发布',
+      link: '反馈入口', linkChange: '反馈', item: latestListItem, itemChange: '线上', cell: '每天', cellChange: '天' },
+  ]
+  for (const { pane, mark, scope, scopeChange, bold, boldChange, link, linkChange, item, itemChange, cell, cellChange } of renderedCases) {
+    await pane.getByRole('heading', { name: '发布说明', exact: true }).waitFor()
+    const scopeParagraph = pane.locator('p').filter({ hasText: scope })
+    const strong = pane.locator('strong').filter({ hasText: bold })
+    const anchor = pane.locator('a').filter({ hasText: link })
+    const listItem = pane.locator('ul').getByRole('listitem').filter({ hasText: item })
+    const table = pane.getByRole('table')
+    await table.getByRole('columnheader', { name: '频率', exact: true }).waitFor()
+    const tableCell = table.locator('td').filter({ hasText: cell })
+    assert.equal(await anchor.textContent(), link)
+    assert.equal(await anchor.getAttribute('href'), null)
+    for (const [element, change] of [[scopeParagraph, scopeChange], [strong, boldChange], [anchor, linkChange],
+      [listItem, itemChange], [tableCell, cellChange]]) {
+      await element.locator(mark).filter({ hasText: change }).waitFor()
+      assert.deepEqual(await element.locator(mark).allTextContents(), [change])
+      assert.equal(await element.locator(mark).isVisible(), true)
+    }
+    const unchanged = pane.getByText(unchangedGuide, { exact: true })
+    await unchanged.waitFor()
+    assert.equal(await unchanged.locator(mark).count(), 0)
+  }
+  const renderedRemovedItem = baselinePane.locator('ul').getByRole('listitem').filter({ hasText: removedLine.slice(2) })
+  assert.equal((await renderedRemovedItem.locator(previewDeleted).allTextContents()).join('').trim(), removedLine.slice(2))
+  await draftPane.locator(previewInserted).filter({ hasText: selectiveDraft.trim() }).waitFor()
+  if (process.env.SUJIAN_GIT_RENDERED_DIFF_SCREENSHOT) {
+    await review.screenshot({ path: process.env.SUJIAN_GIT_RENDERED_DIFF_SCREENSHOT })
+  }
+
   await preview.check()
   const restored = review.getByRole('region', { name: '恢复后的文档', exact: true })
-  await restored.getByText(oldScope, { exact: true }).waitFor()
+  const restoredScope = restored.locator('p').filter({ hasText: oldScope })
+  await restoredScope.waitFor()
+  assert.equal(await restoredScope.locator(previewInserted).count(), 0)
+  await baselinePane.locator('p').filter({ hasText: oldScope }).locator(previewDeleted).waitFor({ state: 'hidden' })
+  await restored.locator('td').filter({ hasText: '每天' }).locator(previewInserted).filter({ hasText: '天' }).waitFor()
   await restored.getByText(latestTimeline, { exact: true }).waitFor()
   await restored.getByText(selectiveDraft.trim(), { exact: true }).waitFor()
   assert.equal(await restored.getByText(removedLine.slice(2), { exact: true }).count(), 0)
   await preview.uncheck()
-  await review.getByRole('region', { name: '当前稿', exact: true }).getByText(latestScope, { exact: true }).waitFor()
+  await draftPane.locator('p').filter({ hasText: latestScope }).locator(previewInserted).filter({ hasText: '只' }).waitFor()
+  console.log('Rendered Git differences preserve headings, paragraphs, bold, links, lists and table cells, and omit reverted fragments from the selected-restoration preview.')
   await applySelection.click()
   await review.waitFor({ state: 'hidden' })
   await assertSource(selectivelyRestored)
@@ -378,6 +445,24 @@ try {
   await assertSource(externalText)
   assert.equal(await readFile(restorePath, 'utf8'), externalText)
   console.log('An external file edit invalidates open full-restore confirmation and clears stale hunk selections.')
+
+  await openHistory(row(longNote), longNote, true)
+  await assertComparison(subject.longBase, '交接日期定在周三。', '交接日期定在周五。', true)
+  await button('排版预览', review).click()
+  for (const { pane, mark, changes } of [
+    { pane: baselinePane, mark: previewDeleted, changes: ['三', '测试', '待'] },
+    { pane: draftPane, mark: previewInserted, changes: ['五', '归档', '已'] },
+  ]) {
+    await pane.locator('td ' + mark).filter({ hasText: changes[2] }).waitFor()
+    assert.equal(await pane.locator('p').filter({ hasText: '交接日期定在' }).locator(mark).textContent(), changes[0])
+    assert.equal(await pane.locator('li ' + mark).textContent(), changes[1])
+    assert.deepEqual(await pane.locator(mark).allTextContents(), changes)
+    await pane.getByText(longParagraph(360), { exact: true }).waitFor()
+  }
+  await button('结束审阅', review).click()
+  await tab(restoreNote).and(selectedTab).waitFor()
+  assert.equal(await readFile(longPath, 'utf8'), longCurrent)
+  console.log('Rendered Git highlights remain precise after 720 unchanged paragraphs and preserve the active document.')
 } catch (error) {
   const alerts = await page.getByRole('alert').allTextContents()
   if (alerts.length) console.error('Desktop error:', alerts.join('\n'))

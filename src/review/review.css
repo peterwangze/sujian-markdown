@@ -153,17 +153,17 @@
 }
 
 .review-source pre.has-inline-diff { white-space: break-spaces; }
-.review-change .is-before, .review-diff-key .is-before { --difference-ink: var(--removed-ink); }
-.review-change .is-after, .review-diff-key .is-after { --difference-ink: var(--added-ink); }
+.review-change .is-before, .review-diff-key .is-before, .review-rendered-pane.is-before { --difference-ink: var(--removed-ink); }
+.review-change .is-after, .review-diff-key .is-after, .review-rendered-pane.is-after { --difference-ink: var(--added-ink); }
 
-.review-inline-change {
+:is(.review-inline-change, .review-rendered-change) {
   border-radius: 2px;
   color: var(--difference-ink);
   background: color-mix(in srgb, var(--surface) 76%, var(--difference-ink));
 }
 
-del.review-inline-change { text-decoration: line-through; }
-ins.review-inline-change { text-decoration: underline; text-underline-offset: .15em; }
+del:is(.review-inline-change, .review-rendered-change) { text-decoration: line-through; }
+ins:is(.review-inline-change, .review-rendered-change) { text-decoration: underline; text-underline-offset: .15em; }
 .review-line-break { user-select: none; }
 .review-line-break::before { content: "↵"; }
 .review-diff-key { display: inline-flex; gap: 8px; font-size: 12px; }
@@ -196,6 +196,7 @@ ins.review-inline-change { text-decoration: underline; text-underline-offset: .1
 }
 
 .review-rendered-pane > p, .review-rendered-content { margin: 0; padding: 10px; }
+.review-rendered-note { margin: 0; color: var(--muted); }
 
 .review-rendered-content .vditor-reset {
   margin: 0;

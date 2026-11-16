@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { FileUp, GitBranch } from 'lucide-react'
 import { renderPreview } from '../editor/render-document.js'
 import { Modal } from '../ui/Controls.jsx'
 import { MAX_LIVE_LENGTH } from '../workspace/text.js'
 import { applyReview, buildReview, selectionOverwritesUnsavedChanges } from './model.js'
 import { buildInlineDiff } from './inline-diff.js'
+import { markRenderedDiff } from './rendered-diff.js'
 import './review.css'
 
 const changesPerPage = 24
@@ -76,36 +77,75 @@ function ChangeCard({ change, comparison, restoration, decision, decide, disable
   </li>
 }
 
-function RenderedPane({ title, text, theme }) {
+async function renderReviewArticle(text, theme) {
+  if (text.length > MAX_LIVE_LENGTH) return null
+  if (text === '') return document.createElement('article')
+  const article = await renderPreview(text, { theme, embeddedMediaOnly: true })
+  for (const input of article.querySelectorAll('input, button')) input.disabled = true
+  return article
+}
+
+function RenderedPane({ title, text, result, side }) {
   const container = useRef(null)
-  const [status, setStatus] = useState('loading')
-  const tooLong = text.length > MAX_LIVE_LENGTH
-
-  useEffect(() => {
-    if (tooLong || !text.length) return
+  useLayoutEffect(() => {
     const target = container.current
-    let active = true
-    target.replaceChildren()
-    setStatus('loading')
-    renderPreview(text, { theme, embeddedMediaOnly: true }).then(article => {
-      if (!active) return
-      for (const input of article.querySelectorAll('input, button')) input.disabled = true
-      target.replaceChildren(article)
-      setStatus('ready')
-    }).catch(() => {
-      if (active) setStatus('error')
-    })
-    return () => { active = false }
-  }, [text, theme, tooLong])
+    if (!target || !result?.value) return
+    target.replaceChildren(result.value)
+    return () => target.replaceChildren()
+  }, [result])
 
-  return <section className="review-rendered-pane" aria-label={title}>
+  return <section className={'review-rendered-pane ' + side} aria-label={title}>
     <h3>{title}</h3>
-    {tooLong ? <p>文档较长，可在源码差异中审阅。</p> : text === '' ? <p>空白文档</p> : <>
-      {status === 'loading' && <p role="status">正在渲染…</p>}
-      {status === 'error' && <p role="alert">排版预览失败，可切换到源码差异。</p>}
+    {text.length > MAX_LIVE_LENGTH ? <p>文档较长，可在源码差异中审阅。</p> : text === '' ? <p>空白文档</p> : <>
+      {!result && <p role="status">正在渲染…</p>}
+      {result?.status === 'rejected' && <p role="alert">排版预览失败，可切换到源码差异。</p>}
       <div className="review-rendered-content" ref={container} />
     </>}
   </section>
+}
+
+function RenderedComparison({ leftTitle, rightTitle, beforeText, afterText, theme, highlight }) {
+  const baseline = useRef(null)
+  const [result, setResult] = useState(null)
+
+  useEffect(() => {
+    let active = true
+    if (baseline.current?.text !== beforeText || baseline.current?.theme !== theme) {
+      baseline.current = { text: beforeText, theme, article: renderReviewArticle(beforeText, theme) }
+    }
+    Promise.allSettled([baseline.current.article, renderReviewArticle(afterText, theme)]).then(([before, after]) => {
+      if (!active) return
+      let note = ''
+      if (highlight && before.value && after.value && beforeText !== afterText) {
+        const markedBefore = before.value.cloneNode(true)
+        const markedAfter = after.value.cloneNode(true)
+        try {
+          if (markRenderedDiff(markedBefore, markedAfter)) {
+            before = { ...before, value: markedBefore }
+            after = { ...after, value: markedAfter }
+            if (!markedBefore.querySelector('.review-rendered-change') && !markedAfter.querySelector('.review-rendered-change')) {
+              note = '两栏没有可定位的文字差异。可在源码差异中核对 Markdown 标记、链接地址等变化。'
+            }
+          } else {
+            note = '排版差异较多，可在源码差异中核对改动。'
+          }
+        } catch {
+          note = '行内标记暂不可用，可在源码差异中核对改动。'
+        }
+      }
+      setResult({ beforeText, afterText, theme, highlight, before, after, note })
+    })
+    return () => { active = false }
+  }, [beforeText, afterText, theme, highlight])
+
+  const current = result?.beforeText === beforeText && result.afterText === afterText && result.theme === theme && result.highlight === highlight ? result : null
+  return <>
+    {current?.note && <p className="review-rendered-note" role="status">{current.note}</p>}
+    <div className="review-preview-grid">
+      <RenderedPane title={leftTitle} text={beforeText} result={current?.before} side="is-before"/>
+      <RenderedPane title={rightTitle} text={afterText} result={current?.after} side="is-after"/>
+    </div>
+  </>
 }
 
 export function ReviewDialog({ name, baseText, currentText, savedText = currentText, diskText, diskConflict, initialCandidate, initialGitBase,
@@ -334,9 +374,9 @@ export function ReviewDialog({ name, baseText, currentText, savedText = currentT
           <button type="button" aria-pressed={view === 'source'} onClick={() => setView('source')}>源码差异</button>
           <button type="button" aria-pressed={view === 'rendered'} onClick={() => setView('rendered')}>排版预览</button>
         </div>
-        {comparing && view === 'source' && changes.length > 0 && <div className="review-diff-key" role="group" aria-label="差异标记">
+        {comparing && left !== (view === 'rendered' ? renderedText : right) && <div className="review-diff-key" role="group" aria-label="差异标记">
           <span className="is-before"><del className="review-inline-change">基线删改</del></span>
-          <span className="is-after"><ins className="review-inline-change">当前新增</ins></span>
+          <span className="is-after"><ins className="review-inline-change">{previewSelection ? '预览新增' : '当前新增'}</ins></span>
         </div>}
         {!comparing && view === 'source' && ready.length > 0 && <div className="review-bulk">
           <button type="button" disabled={busy} onClick={() => decideAll('accept')}>采纳所有可用改动</button>
@@ -347,10 +387,10 @@ export function ReviewDialog({ name, baseText, currentText, savedText = currentT
           {restoring ? '只预览选中的恢复' : '只预览已采纳的改动'}
         </label>}
       </div>
-      {compared.error ? <p className="review-error" role="alert">{compared.error}</p> : view === 'rendered' ? <div className="review-preview-grid">
-        <RenderedPane title={comparing ? 'Git 基线' : sourceLabels.current} text={comparing ? left : currentText} theme={theme}/>
-        <RenderedPane title={renderedRightTitle} text={renderedText} theme={theme}/>
-      </div> : changes.length === 0 ? <p className="review-notice">两份文档没有差异。</p> : <>
+      {view === 'rendered' && (comparing || !compared.error) ? <RenderedComparison
+        leftTitle={comparing ? 'Git 基线' : sourceLabels.current} rightTitle={renderedRightTitle}
+        beforeText={comparing ? left : currentText} afterText={renderedText} theme={theme} highlight={comparing}/>
+      : compared.error ? <p className="review-error" role="alert">{compared.error}</p> : changes.length === 0 ? <p className="review-notice">两份文档没有差异。</p> : <>
         <ol ref={changesList} className="review-changes" aria-label="文档改动">
           {changes.slice(currentPage * changesPerPage, (currentPage + 1) * changesPerPage).map(change =>
             <ChangeCard key={change.id} change={change} comparison={comparing} decision={decisions[change.id]} decide={decide}

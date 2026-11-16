@@ -6,7 +6,7 @@
 
 <p align="center"><strong>写作时看见排版，改稿时看清变化。</strong></p>
 <p align="center">给长文、技术文档和改稿用的本地 Markdown 编辑器。边写边看排版，用键盘找到文件和命令，再把确认过的改动交付出去。</p>
-<p align="center"><a href="https://github.com/peterwangze/sujian-markdown/releases/tag/v1.4.15"><strong>下载 v1.4.15 离线安装包</strong></a> · Windows / macOS / Linux</p>
+<p align="center"><a href="https://github.com/peterwangze/sujian-markdown/releases/tag/v1.4.16"><strong>下载 v1.4.16 离线安装包</strong></a> · Windows / macOS / Linux</p>
 
 ## 用顺手的方式写作
 
@@ -91,7 +91,11 @@ AI 生成由你选择的外部工具完成。素笺在本机进行审阅、比�
 
 <img src="docs/images/sujian-git-document-history.png" alt="产品计划的 Git 提交历史显示四条相关提交，更名前的两条提交标出旧文件名。" width="600">
 
-**直接看出改了哪里。** Git 源码差异会标出删掉和新增的字词、数字、标点及空白。例如参数从 `3` 改为 `5`，可以直接看到两个数字的标记。提交历史和 **Git 比较** 使用同样的标记。整段替换和特别长的差异会按块显示。
+**直接看出改了哪里。** 在 Git 比较中切换到 **排版预览**，可在渲染后的正文、列表和表格里直接读到删改和新增。加粗、链接等正常排版照常显示。需要核对 Markdown 标记、链接地址或空白时，再打开 **源码差异**。
+
+<img src="docs/images/sujian-git-rendered-diff.png" alt="Git 排版预览保留文档标题、列表和表格，在两栏实际变动的词句上显示删除线和下划线。" width="720">
+
+排版预览适用于约 20 万字符以内的文档。差异过多时会保留普通预览，并提示使用源码差异核对。
 
 1. **只找回旧版里需要的段落。** 在源码差异中勾选相应的 **恢复此处**，再用 **排版预览 → 只预览选中的恢复** 核对效果。点击 **恢复所选改动**。如果所选内容涉及未保存的编辑，素笺会先请你确认。
 2. **让整篇文档回到某一版。** 点击 **恢复整篇…**，核对确认窗口里的版本和未保存修改提示，再点击 **确认恢复整篇**。两种恢复均沿用文档的保存设置。继续修改前，可以在文档右键菜单选择 **撤销本次审阅**，找回操作前的稿件。
@@ -115,15 +119,15 @@ Windows 使用安装目录中的 `Sujian.exe`。macOS 使用 `/Applications/Suji
 
 | 系统 | x64 / Intel | ARM64 / Apple 芯片 |
 | --- | --- | --- |
-| Windows | [EXE](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.15/Sujian-1.4.15-win-x64.exe) | [EXE](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.15/Sujian-1.4.15-win-arm64.exe) |
-| macOS 13+ | [DMG](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.15/Sujian-1.4.15-mac-x64.dmg) | [DMG](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.15/Sujian-1.4.15-mac-arm64.dmg) |
-| Linux | [AppImage](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.15/Sujian-1.4.15-linux-x86_64.AppImage) · [DEB](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.15/Sujian-1.4.15-linux-amd64.deb) | [AppImage](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.15/Sujian-1.4.15-linux-arm64.AppImage) · [DEB](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.15/Sujian-1.4.15-linux-arm64.deb) |
+| Windows | [EXE](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.16/Sujian-1.4.16-win-x64.exe) | [EXE](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.16/Sujian-1.4.16-win-arm64.exe) |
+| macOS 13+ | [DMG](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.16/Sujian-1.4.16-mac-x64.dmg) | [DMG](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.16/Sujian-1.4.16-mac-arm64.dmg) |
+| Linux | [AppImage](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.16/Sujian-1.4.16-linux-x86_64.AppImage) · [DEB](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.16/Sujian-1.4.16-linux-amd64.deb) | [AppImage](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.16/Sujian-1.4.16-linux-arm64.AppImage) · [DEB](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.16/Sujian-1.4.16-linux-arm64.deb) |
 
 - **Windows** 双击 EXE 安装。安装包未做 Authenticode 签名。ARM64 版的 Pandoc 使用 Windows 11 的 x64 仿真。
 - **macOS** 挂载 DMG 后，将素笺拖到“应用程序”。此版本采用临时签名，首次启动时可能需要在“隐私与安全性”中允许打开。[Apple 打开应用说明](https://support.apple.com/en-us/102445)
 - **Linux** 赋予 AppImage 执行权限后打开，或通过软件包管理器安装 DEB。运行依赖发行版提供的 Chromium 系统库。
 
-安装包包含应用运行时、渲染资源、字体与 Pandoc。六种系统与架构组合均通过成品启动检查。[SHA-256 清单](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.15/SHA256SUMS.txt) · [构建与验证记录](https://github.com/peterwangze/sujian-markdown/actions/workflows/release.yml)
+安装包包含应用运行时、渲染资源、字体与 Pandoc。六种系统与架构组合均通过成品启动检查。[SHA-256 清单](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.16/SHA256SUMS.txt) · [构建与验证记录](https://github.com/peterwangze/sujian-markdown/actions/workflows/release.yml)
 
 ## 开发与兼容范围
 
