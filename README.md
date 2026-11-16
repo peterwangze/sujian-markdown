@@ -6,7 +6,7 @@
 
 <p align="center"><strong>写作时看见排版，改稿时看清变化。</strong></p>
 <p align="center">给长文、技术文档和改稿用的本地 Markdown 编辑器。边写边看排版，用键盘找到文件和命令，再把确认过的改动交付出去。</p>
-<p align="center"><a href="https://github.com/peterwangze/sujian-markdown/releases/tag/v1.4.14"><strong>下载 v1.4.14 离线安装包</strong></a> · Windows / macOS / Linux</p>
+<p align="center"><a href="https://github.com/peterwangze/sujian-markdown/releases/tag/v1.4.15"><strong>下载 v1.4.15 离线安装包</strong></a> · Windows / macOS / Linux</p>
 
 ## 用顺手的方式写作
 
@@ -91,10 +91,12 @@ AI 生成由你选择的外部工具完成。素笺在本机进行审阅、比�
 
 <img src="docs/images/sujian-git-document-history.png" alt="产品计划的 Git 提交历史显示四条相关提交，更名前的两条提交标出旧文件名。" width="600">
 
+**直接看出改了哪里。** Git 源码差异会标出删掉和新增的字词、数字、标点及空白。例如参数从 `3` 改为 `5`，可以直接看到两个数字的标记。提交历史和 **Git 比较** 使用同样的标记。整段替换和特别长的差异会按块显示。
+
 1. **只找回旧版里需要的段落。** 在源码差异中勾选相应的 **恢复此处**，再用 **排版预览 → 只预览选中的恢复** 核对效果。点击 **恢复所选改动**。如果所选内容涉及未保存的编辑，素笺会先请你确认。
 2. **让整篇文档回到某一版。** 点击 **恢复整篇…**，核对确认窗口里的版本和未保存修改提示，再点击 **确认恢复整篇**。两种恢复均沿用文档的保存设置。继续修改前，可以在文档右键菜单选择 **撤销本次审阅**，找回操作前的稿件。
 
-<img src="docs/images/sujian-git-history-restore.png" alt="历史版本审阅显示可勾选的源码差异，底部提供恢复整篇和恢复所选改动。" width="720">
+<img src="docs/images/sujian-git-history-restore.png" alt="Git 源码差异在左右两栏标出实际删掉和新增的文字，可勾选需要恢复的差异。" width="720">
 
 列表跟踪当前分支的单文件历史，涵盖 Git 能识别的更名。复杂合并中的跨分支更名可能只显示合并提交。删除该文档的提交会显示在列表中，供定位删除时间。
 
@@ -113,15 +115,15 @@ Windows 使用安装目录中的 `Sujian.exe`。macOS 使用 `/Applications/Suji
 
 | 系统 | x64 / Intel | ARM64 / Apple 芯片 |
 | --- | --- | --- |
-| Windows | [EXE](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.14/Sujian-1.4.14-win-x64.exe) | [EXE](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.14/Sujian-1.4.14-win-arm64.exe) |
-| macOS 13+ | [DMG](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.14/Sujian-1.4.14-mac-x64.dmg) | [DMG](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.14/Sujian-1.4.14-mac-arm64.dmg) |
-| Linux | [AppImage](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.14/Sujian-1.4.14-linux-x86_64.AppImage) · [DEB](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.14/Sujian-1.4.14-linux-amd64.deb) | [AppImage](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.14/Sujian-1.4.14-linux-arm64.AppImage) · [DEB](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.14/Sujian-1.4.14-linux-arm64.deb) |
+| Windows | [EXE](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.15/Sujian-1.4.15-win-x64.exe) | [EXE](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.15/Sujian-1.4.15-win-arm64.exe) |
+| macOS 13+ | [DMG](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.15/Sujian-1.4.15-mac-x64.dmg) | [DMG](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.15/Sujian-1.4.15-mac-arm64.dmg) |
+| Linux | [AppImage](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.15/Sujian-1.4.15-linux-x86_64.AppImage) · [DEB](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.15/Sujian-1.4.15-linux-amd64.deb) | [AppImage](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.15/Sujian-1.4.15-linux-arm64.AppImage) · [DEB](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.15/Sujian-1.4.15-linux-arm64.deb) |
 
 - **Windows** 双击 EXE 安装。安装包未做 Authenticode 签名。ARM64 版的 Pandoc 使用 Windows 11 的 x64 仿真。
 - **macOS** 挂载 DMG 后，将素笺拖到“应用程序”。此版本采用临时签名，首次启动时可能需要在“隐私与安全性”中允许打开。[Apple 打开应用说明](https://support.apple.com/en-us/102445)
 - **Linux** 赋予 AppImage 执行权限后打开，或通过软件包管理器安装 DEB。运行依赖发行版提供的 Chromium 系统库。
 
-安装包包含应用运行时、渲染资源、字体与 Pandoc。六种系统与架构组合均通过成品启动检查。[SHA-256 清单](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.14/SHA256SUMS.txt) · [构建与验证记录](https://github.com/peterwangze/sujian-markdown/actions/workflows/release.yml)
+安装包包含应用运行时、渲染资源、字体与 Pandoc。六种系统与架构组合均通过成品启动检查。[SHA-256 清单](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.15/SHA256SUMS.txt) · [构建与验证记录](https://github.com/peterwangze/sujian-markdown/actions/workflows/release.yml)
 
 ## 开发与兼容范围
 

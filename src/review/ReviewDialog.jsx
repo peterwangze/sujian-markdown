@@ -4,6 +4,7 @@ import { renderPreview } from '../editor/render-document.js'
 import { Modal } from '../ui/Controls.jsx'
 import { MAX_LIVE_LENGTH } from '../workspace/text.js'
 import { applyReview, buildReview, selectionOverwritesUnsavedChanges } from './model.js'
+import { buildInlineDiff } from './inline-diff.js'
 import './review.css'
 
 const changesPerPage = 24
@@ -26,10 +27,20 @@ async function readLocalCandidate(file) {
   }
 }
 
-function SourcePane({ title, text, kind = '' }) {
+function InlineSource({ parts, kind }) {
+  const Change = kind === 'is-before' ? 'del' : 'ins'
+  return parts.map(({ text, changed }, index) => changed ? <Change key={index} className="review-inline-change">
+    {text.trim() === '' && /[\r\n]/.test(text) && <span className="review-line-break" aria-hidden="true" title="换行变化"/>}
+    {text}
+  </Change> : text)
+}
+
+function SourcePane({ title, text, parts, kind = '' }) {
   return <div className={'review-source ' + kind}>
     <h4>{title}</h4>
-    {text === '' ? <p className="review-empty-source">空白</p> : <pre tabIndex={0} aria-label={title}>{text}</pre>}
+    {text === '' ? <p className="review-empty-source">空白</p> : <pre tabIndex={0} aria-label={title} className={parts ? 'has-inline-diff' : undefined}>
+      {parts ? <InlineSource parts={parts} kind={kind}/> : text}
+    </pre>}
   </div>
 }
 
@@ -40,6 +51,9 @@ function ChangeCard({ change, comparison, restoration, decision, decide, disable
     decision === 'accept' ? '已采纳' : decision === 'skip' ? '已跳过' : ''
   const leftTitle = comparison ? 'Git 基线' : ready ? sourceLabels.current : sourceLabels.base
   const rightTitle = comparison ? sourceLabels.current : sourceLabels.candidate
+  const leftText = restoration ? change.after : change.before
+  const rightText = restoration ? change.before : change.after
+  const inline = useMemo(() => comparison ? buildInlineDiff(leftText, rightText) : null, [comparison, leftText, rightText])
   return <li className={'review-change' + (conflict ? ' is-conflict' : '')}>
     <div className="review-change-heading">
       <h3>第 {change.line} 行</h3>
@@ -55,9 +69,9 @@ function ChangeCard({ change, comparison, restoration, decision, decide, disable
       </label>}
     </div>
     <div className="review-source-grid">
-      <SourcePane title={leftTitle} text={restoration ? change.after : change.before} kind="is-before"/>
+      <SourcePane title={leftTitle} text={leftText} parts={inline?.before} kind="is-before"/>
       {conflict && <SourcePane title={sourceLabels.current} text={change.current}/>}
-      <SourcePane title={rightTitle} text={restoration ? change.before : change.after} kind="is-after"/>
+      <SourcePane title={rightTitle} text={rightText} parts={inline?.after} kind="is-after"/>
     </div>
   </li>
 }
@@ -320,6 +334,10 @@ export function ReviewDialog({ name, baseText, currentText, savedText = currentT
           <button type="button" aria-pressed={view === 'source'} onClick={() => setView('source')}>源码差异</button>
           <button type="button" aria-pressed={view === 'rendered'} onClick={() => setView('rendered')}>排版预览</button>
         </div>
+        {comparing && view === 'source' && changes.length > 0 && <div className="review-diff-key" role="group" aria-label="差异标记">
+          <span className="is-before"><del className="review-inline-change">基线删改</del></span>
+          <span className="is-after"><ins className="review-inline-change">当前新增</ins></span>
+        </div>}
         {!comparing && view === 'source' && ready.length > 0 && <div className="review-bulk">
           <button type="button" disabled={busy} onClick={() => decideAll('accept')}>采纳所有可用改动</button>
           <button type="button" disabled={busy} onClick={() => decideAll('skip')}>全部跳过</button>

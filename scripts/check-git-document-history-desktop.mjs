@@ -39,11 +39,14 @@ const oldScope = '首批试用覆盖写作与导出。'
 const latestScope = '首批试用只覆盖写作。'
 const oldTimeline = '每周收集一次试用反馈。'
 const latestTimeline = '首周每天收集一次试用反馈。'
+const removedLine = '- 首轮报名须提交纸质回执。'
 const restoreBaseline = [
   '# 发布说明', '', '## 试用范围', '', oldScope, '', '## 反馈节奏', '', oldTimeline, '',
-  '试用期间保留原有的本地保存流程。', '',
+  '- 报名和回访通过项目页面安排。', removedLine, '- 试用期间保留原有的本地保存流程。', '',
+  '下一批试用安排将单独公布。', '',
 ].join('\n')
 const restoreCurrent = restoreBaseline.replace(oldScope, latestScope).replace(oldTimeline, latestTimeline)
+  .replace(removedLine + '\n', '')
 const selectiveDraft = '\n支持渠道继续收集安装反馈。\n'
 const fullDraft = '\n周五再确认下一批试用名单。\n'
 const selectivelyRestored = restoreCurrent.replace(latestScope, oldScope) + selectiveDraft
@@ -110,6 +113,8 @@ const source = page.getByLabel('Markdown 源码')
 const sourceLine = text => source.locator('.cm-line').getByText(text, { exact: true })
 const button = (name, scope = page) => scope.getByRole('button', { name, exact: true })
 const historyEntry = title => history.getByRole('button').filter({ hasText: title })
+const hunk = text => review.getByRole('listitem').filter({ hasText: text })
+const historySource = (card, label) => card.getByLabel(label, { exact: true })
 
 async function documentAction(name) {
   await button('文档与视图').click()
@@ -232,12 +237,37 @@ try {
   await openHistory(tab(restoreNote), restoreNote)
   await assertComparison(subject.restoreBase, oldScope, latestScope)
 
-  const hunkChoice = text => review.getByRole('listitem').filter({ hasText: text })
-    .getByRole('checkbox', { name: /^恢复第 \d+ 行的改动$/ })
+  const baselineScope = historySource(hunk(oldScope), 'Git 基线')
+  const draftScope = historySource(hunk(oldScope), '当前稿')
+  assert.equal(await baselineScope.textContent(), oldScope + '\n')
+  assert.equal(await draftScope.textContent(), latestScope + '\n')
+  const removed = baselineScope.locator('del.review-inline-change')
+  const inserted = draftScope.locator('ins.review-inline-change')
+  assert.deepEqual(await removed.allTextContents(), ['与导出'])
+  assert.deepEqual(await inserted.allTextContents(), ['只'])
+  for (const mark of [removed, inserted]) {
+    assert.equal(await mark.isVisible(), true)
+    assert.notEqual(await mark.evaluate(element => getComputedStyle(element).backgroundColor), 'rgba(0, 0, 0, 0)')
+  }
+
+  const deletedHunk = hunk(removedLine)
+  assert.equal(await historySource(deletedHunk, 'Git 基线').textContent(), removedLine + '\n')
+  assert.equal((await deletedHunk.locator('del.review-inline-change').allTextContents()).join('').trim(), removedLine)
+  assert.equal(await deletedHunk.locator('ins.review-inline-change').count(), 0)
+  await deletedHunk.getByText('空白', { exact: true }).waitFor()
+
+  const addedHunk = hunk(selectiveDraft.trim())
+  assert.equal(await historySource(addedHunk, '当前稿').textContent(), selectiveDraft)
+  assert.equal((await addedHunk.locator('ins.review-inline-change').allTextContents()).join('').trim(), selectiveDraft.trim())
+  assert.equal(await addedHunk.locator('del.review-inline-change').count(), 0)
+  await addedHunk.getByText('空白', { exact: true }).waitFor()
+  console.log('History source marks only changed characters within a line and marks all text in removed and unsaved added lines without rewriting source.')
+
+  const hunkChoice = text => hunk(text).getByRole('checkbox', { name: /^恢复第 \d+ 行的改动$/ })
   const hunkChoices = review.getByRole('checkbox', { name: /^恢复第 \d+ 行的改动$/ })
   const selectedHunks = review.getByRole('checkbox', { name: /^恢复第 \d+ 行的改动$/, checked: true })
   const applySelection = button('恢复所选改动', review)
-  assert.equal(await hunkChoices.count(), 3)
+  assert.equal(await hunkChoices.count(), 4)
   assert.equal(await selectedHunks.count(), 0)
   assert.equal(await applySelection.isDisabled(), true)
   const unsavedHunk = hunkChoice(selectiveDraft.trim())
@@ -253,8 +283,9 @@ try {
   await unsavedHunk.uncheck()
   await hunkChoice(oldScope).check()
   assert.equal(await selectedHunks.count(), 1)
-  if (process.env.SUJIAN_GIT_RESTORE_SCREENSHOT) {
-    await review.screenshot({ path: process.env.SUJIAN_GIT_RESTORE_SCREENSHOT })
+  const diffScreenshot = process.env.SUJIAN_GIT_DIFF_SCREENSHOT || process.env.SUJIAN_GIT_RESTORE_SCREENSHOT
+  if (diffScreenshot) {
+    await review.screenshot({ path: diffScreenshot })
   }
 
   await button('排版预览', review).click()
@@ -266,6 +297,7 @@ try {
   await restored.getByText(oldScope, { exact: true }).waitFor()
   await restored.getByText(latestTimeline, { exact: true }).waitFor()
   await restored.getByText(selectiveDraft.trim(), { exact: true }).waitFor()
+  assert.equal(await restored.getByText(removedLine.slice(2), { exact: true }).count(), 0)
   await preview.uncheck()
   await review.getByRole('region', { name: '当前稿', exact: true }).getByText(latestScope, { exact: true }).waitFor()
   await applySelection.click()

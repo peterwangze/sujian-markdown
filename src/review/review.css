@@ -152,6 +152,23 @@
   font: 12px/1.5 var(--mono);
 }
 
+.review-source pre.has-inline-diff { white-space: break-spaces; }
+.review-change .is-before, .review-diff-key .is-before { --difference-ink: var(--removed-ink); }
+.review-change .is-after, .review-diff-key .is-after { --difference-ink: var(--added-ink); }
+
+.review-inline-change {
+  border-radius: 2px;
+  color: var(--difference-ink);
+  background: color-mix(in srgb, var(--surface) 76%, var(--difference-ink));
+}
+
+del.review-inline-change { text-decoration: line-through; }
+ins.review-inline-change { text-decoration: underline; text-underline-offset: .15em; }
+.review-line-break { user-select: none; }
+.review-line-break::before { content: "↵"; }
+.review-diff-key { display: inline-flex; gap: 8px; font-size: 12px; }
+.review-diff-key .review-inline-change { padding: 2px 5px; }
+
 .review-source pre:focus-visible { outline-offset: -2px; }
 .review-empty-source, .review-notice { margin: 0; padding: 8px 9px; color: var(--muted); }
 .review-pager { justify-content: center; color: var(--muted); }

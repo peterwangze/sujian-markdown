@@ -15,9 +15,11 @@ const target = path.join(repo, 'requirements.md')
 const evidence = path.join(records, '验证 记录.md')
 const baselineFile = path.join(working, '旧底稿.md')
 const candidateFile = path.join(working, '候选修订.md')
-const gitText = '# 需求基线\n\n提交中的旧说明。\n'
+const gitCurrentLine = '桌面安装包使用 `prod` 通道。'
+const gitHeadLine = '桌面安装包使用 `beta` 通道！'
+const gitTagLine = '桌面安装包使用 `test` 通道？'
 const original = [
-  '# 审阅样例', '', '需要修订的第一段。', '', '稳定段落甲。', '',
+  '# 审阅样例', '', '需要修订的第一段。', '', gitCurrentLine, '',
   '稳定段落乙。', '', '稳定段落丙。', '', '需要保留的末段。', '',
 ].join('\n')
 const candidate = original.replace('需要修订的第一段。', '采纳这一段新说明。').replace('需要保留的末段。', '跳过这一段新说明。')
@@ -30,7 +32,7 @@ const git = (...arguments_) => promisify(execFile)('git', ['-C', repo, ...argume
 
 await mkdir(records, { recursive: true })
 await Promise.all([
-  writeFile(target, gitText),
+  writeFile(target, original.replace(gitCurrentLine, gitTagLine)),
   writeFile(evidence, '# 验证记录\n\n第三行证据。\n'),
   writeFile(baselineFile, Buffer.from('\ufeff' + olderBaseline.replaceAll('\n', '\r\n'), 'utf16le')),
   writeFile(candidateFile, importedCandidate.replaceAll('\n', '\r\n')),
@@ -39,6 +41,9 @@ await git('init', '-q')
 await git('add', 'requirements.md')
 await git('-c', 'user.name=Sujian QA', '-c', 'user.email=sujian-qa@example.invalid', 'commit', '-qm', 'Review baseline')
 await git('-c', 'tag.gpgSign=false', 'tag', 'review-base')
+await writeFile(target, original.replace(gitCurrentLine, gitHeadLine))
+await git('add', 'requirements.md')
+await git('-c', 'user.name=Sujian QA', '-c', 'user.email=sujian-qa@example.invalid', 'commit', '-qm', 'Update review baseline')
 await writeFile(target, original)
 
 const app = await _electron.launch({ args: [...args, target, evidence], ...(executablePath && { executablePath }) })
@@ -60,6 +65,17 @@ async function documentAction(name) {
 async function tabAction(document, action) {
   await tab(document).click({ button: 'right' })
   await page.getByRole('menuitem', { name: action, exact: true }).click()
+}
+
+async function assertGitInlineDiff(baselineLine, baselineChanges) {
+  const baseline = review.getByLabel('Git 基线', { exact: true }).filter({ hasText: baselineLine })
+  const current = review.getByLabel('当前稿', { exact: true }).filter({ hasText: gitCurrentLine })
+  await baseline.waitFor()
+  await current.waitFor()
+  assert.equal(await baseline.textContent(), baselineLine + '\n')
+  assert.equal(await current.textContent(), gitCurrentLine + '\n')
+  assert.deepEqual(await baseline.locator('del.review-inline-change').allTextContents(), baselineChanges)
+  assert.deepEqual(await current.locator('ins.review-inline-change').allTextContents(), ['prod', '。'])
 }
 
 async function openFileComparison() {
@@ -132,11 +148,15 @@ try {
   await documentAction('审阅修订稿')
   await button('Git 比较', review).click()
   await button('比较 Git 版本', review).click()
-  await review.getByLabel('Git 基线').filter({ hasText: '提交中的旧说明。' }).waitFor()
+  await assertGitInlineDiff(gitHeadLine, ['beta', '！'])
   await review.getByLabel('Git 版本', { exact: true }).fill('review-base')
   await button('比较 Git 版本', review).click()
   await review.getByText(/^review-base · [a-f0-9]{8}$/).waitFor()
-  await review.getByLabel('Git 基线').filter({ hasText: '提交中的旧说明。' }).waitFor()
+  await assertGitInlineDiff(gitTagLine, ['test', '？'])
+  await button('排版预览', review).click()
+  await review.getByRole('region', { name: 'Git 基线', exact: true }).getByText('test', { exact: true }).waitFor()
+  await review.getByRole('region', { name: '当前稿', exact: true }).getByText('prod', { exact: true }).waitFor()
+  assert.equal(await review.locator('.review-inline-change').count(), 0)
   assert.equal(await button('应用已采纳改动', review).count(), 0)
   await button('结束审阅', review).click()
   assert.equal(await readFile(target, 'utf8'), original)
@@ -169,7 +189,7 @@ try {
   await issue.click()
   await tab('tasks.md').and(selectedTab()).waitFor()
   await source.locator('.cm-activeLine').getByText('## TASK-001 实现与验证', { exact: true }).waitFor()
-  console.log('Desktop review verified file/old baseline loading, three-way conflict and cancellation, resolved apply/undo, Git HEAD/tag, source links, templates and spec navigation.')
+  console.log('Desktop review verified file/old baseline loading, three-way conflict and cancellation, resolved apply/undo, Git HEAD/tag word and punctuation highlights, source links, templates and spec navigation.')
 } finally {
   await app.close()
 }
