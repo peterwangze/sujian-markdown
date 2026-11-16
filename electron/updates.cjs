@@ -195,7 +195,7 @@ async function downloadAsset(fetchImpl, asset, { directory, signal, onProgress }
     if (bytes !== asset.size) throw new Error('安装包大小与发布记录不符。');
     if (digest.digest('hex') !== asset.sha256) throw new Error('安装包 SHA-256 校验失败，请重新下载。');
     const saved = await saveVerifiedFile(temporaryFile, asset.name, target, staging, timer.signal);
-    return { ...saved, bytes };
+    return { ...saved, bytes, format: asset.format, sha256: asset.sha256 };
   } catch (error) {
     timer.signal.throwIfAborted();
     throw error;
@@ -256,4 +256,4 @@ function createUpdater({ currentVersion, platform = process.platform, arch = pro
   };
 }
 
-module.exports = { createUpdater };
+module.exports = { createUpdater, maximumInstaller };

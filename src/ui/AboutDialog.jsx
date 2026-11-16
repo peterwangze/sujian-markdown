@@ -44,8 +44,10 @@ function ReleaseNotes({ notes, theme }) {
 export function AboutDialog({ open, versionLabel, theme, onClose, run }) {
   const [check, setCheck] = useState(null)
   const [download, setDownload] = useState(null)
+  const [installation, setInstallation] = useState(null)
   const checking = check?.status === 'checking'
   const downloading = download?.status === 'downloading'
+  const installing = installation?.status === 'installing'
   const hasUpdate = check?.status === 'update-available'
   const supportsUpdates = Boolean(desktop.checkForUpdates)
 
@@ -56,6 +58,7 @@ export function AboutDialog({ open, versionLabel, theme, onClose, run }) {
   async function checkForUpdates() {
     setCheck({ status: 'checking' })
     setDownload(null)
+    setInstallation(null)
     try {
       setCheck(await desktop.checkForUpdates())
     } catch {
@@ -65,6 +68,7 @@ export function AboutDialog({ open, versionLabel, theme, onClose, run }) {
 
   async function downloadUpdate(asset) {
     setDownload({ status: 'downloading', downloadedBytes: 0, totalBytes: asset.size })
+    setInstallation(null)
     try {
       setDownload(await desktop.downloadUpdate(asset.name))
     } catch {
@@ -75,6 +79,15 @@ export function AboutDialog({ open, versionLabel, theme, onClose, run }) {
   function cancelDownload() {
     setDownload(previous => previous?.status === 'downloading' ? { ...previous, cancelling: true } : previous)
     run(() => desktop.cancelUpdateDownload())
+  }
+
+  async function installUpdate() {
+    setInstallation({ status: 'installing' })
+    try {
+      setInstallation(await desktop.installUpdate(download.installId))
+    } catch {
+      setInstallation({ status: 'error', message: '启动安装失败，请重试。' })
+    }
   }
 
   if (!open) return null
@@ -92,7 +105,8 @@ export function AboutDialog({ open, versionLabel, theme, onClose, run }) {
         {check.assets.map(asset => <li key={asset.name}>
           <div><strong>{platformNames[check.platform] || '安装包'} {check.arch} · {asset.format}</strong>
             <span>{asset.name} · {fileSize(asset.size)}</span></div>
-          <button type="button" className="primary" disabled={downloading} onClick={() => void downloadUpdate(asset)}>
+          <button type="button" className={download?.status === 'completed' ? 'small-button' : 'primary'}
+            disabled={downloading || installing} onClick={() => void downloadUpdate(asset)}>
             {check.platform === 'linux' ? `下载 ${asset.format}` : '下载安装包'}
           </button>
         </li>)}
@@ -107,15 +121,21 @@ export function AboutDialog({ open, versionLabel, theme, onClose, run }) {
       {download?.status === 'error' && <p className="update-message update-error" role="alert">{download.message}</p>}
       {download?.status === 'completed' && <div className="update-complete">
         <div role="status"><strong>已下载并通过校验</strong><span>{download.fileName}</span></div>
-        <button type="button" className="small-button" onClick={() => run(() => desktop.showItemInFolder(download.filePath))}>打开下载位置</button>
+        <div className="update-install-actions">
+          <button type="button" className="small-button" onClick={() => run(() => desktop.showItemInFolder(download.filePath))}>打开下载位置</button>
+          {desktop.installUpdate && <button type="button" className="primary" disabled={installing} onClick={() => void installUpdate()}>安装更新</button>}
+        </div>
       </div>}
+      {installing && <p className="update-message" role="status">正在准备安装更新…</p>}
+      {installation?.status === 'cancelled' && <p className="update-message" role="status">已取消安装</p>}
+      {installation?.status === 'error' && <p className="update-message update-error" role="alert">{installation.message}</p>}
     </section>}
     <footer>
       <button type="button" className="about-star" onClick={() => run(() => desktop.openExternal(repositoryUrl))}>
         <Star size={14} aria-hidden="true"/>在 GitHub 上点星
       </button>
       <button type="button" onClick={() => run(() => desktop.openExternal(releaseHistory))}>查看发布记录</button>
-      {supportsUpdates && <button type="button" className={hasUpdate ? '' : 'primary'} disabled={checking || downloading}
+      {supportsUpdates && <button type="button" className={hasUpdate ? '' : 'primary'} disabled={checking || downloading || installing}
         onClick={() => void checkForUpdates()}>检查更新</button>}
     </footer>
   </Modal>

@@ -4,6 +4,7 @@ import { Editor, renderDocument } from './editor/index.js'
 import { formatMarkdown } from './editor/format.js'
 import { imageAltFromAddress } from './editor/image-paste.js'
 import { AboutDialog } from './ui/AboutDialog.jsx'
+import { useUpdateInstall } from './ui/UpdateInstallDialog.jsx'
 import { IconButton, Modal, TabStrip } from './ui/Controls.jsx'
 import { Sidebar } from './ui/Sidebar.jsx'
 import { Toolbar } from './ui/Toolbar.jsx'
@@ -67,6 +68,7 @@ export default function App() {
     noticeTimer.current = setTimeout(() => setMessage(null), error ? 7500 : 3000)
   }, [])
   const workspace = useWorkspace(notify, flushEditor)
+  const updateInstall = useUpdateInstall(workspace, notify)
   const fonts = useFonts(notify)
   const { docs, active, settings, configure, amend, ready } = workspace
   const [appVersion, setAppVersion] = useState(builtVersion)
@@ -105,7 +107,7 @@ export default function App() {
   const activeFonts = fonts.imported.filter(font => !fonts.unavailable.includes(font.id))
   const fontsCss = `:root{--sans:${fontStack('uiFont', settings.uiFont, activeFonts)};` +
     `--serif:${fontStack('bodyFont', settings.bodyFont, activeFonts)};--mono:${fontStack('sourceFont', settings.sourceFont, activeFonts)}}`
-  const modalOpen = !!dialog || !!context
+  const modalOpen = !!dialog || !!context || updateInstall.preparing
   const commandContext = useRef(null)
   commandContext.current = { active, mode, settings, native, canUndoReview, tabCount: docs.length }
   const deferredText = useDeferredValue(active?.text ?? '')
@@ -520,7 +522,7 @@ export default function App() {
   }, [ready, notify])
 
   useEffect(() => {
-    if (dialog || !commandQueue.length || handlingCommand.current) return
+    if (dialog || updateInstall.preparing || !commandQueue.length || handlingCommand.current) return
     handlingCommand.current = true
     const processCommand = async () => {
       try {
@@ -533,7 +535,7 @@ export default function App() {
       }
     }
     void processCommand()
-  }, [commandQueue, dialog, notify])
+  }, [commandQueue, dialog, notify, updateInstall.preparing])
 
   function action(key) {
     const editing = commandsById.get(key)
@@ -1038,5 +1040,6 @@ export default function App() {
           await desktop.trashPath(dialog.item.path); setRefresh(previous => previous + 1); closeDialog()
         })}>移到回收站</button></footer>
     </Modal>}
+    {updateInstall.dialog}
   </div>
 }

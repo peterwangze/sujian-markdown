@@ -6,7 +6,7 @@
 
 <p align="center"><strong>写作时看见排版，改稿时看清变化。</strong></p>
 <p align="center">给长文、技术文档和改稿用的本地 Markdown 编辑器。边写边看排版，用键盘找到文件和命令，再把确认过的改动交付出去。</p>
-<p align="center"><a href="https://github.com/peterwangze/sujian-markdown/releases/tag/v1.4.19"><strong>下载 v1.4.19 离线安装包</strong></a> · Windows / macOS / Linux</p>
+<p align="center"><a href="https://github.com/peterwangze/sujian-markdown/releases/tag/v1.4.20"><strong>下载 v1.4.20 离线安装包</strong></a> · Windows / macOS / Linux</p>
 
 ## 用顺手的方式写作
 
@@ -119,25 +119,29 @@ Windows 使用安装目录中的 `Sujian.exe`。macOS 使用 `/Applications/Suji
 
 | 系统 | x64 / Intel | ARM64 / Apple 芯片 |
 | --- | --- | --- |
-| Windows | [EXE](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.19/Sujian-1.4.19-win-x64.exe) | [EXE](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.19/Sujian-1.4.19-win-arm64.exe) |
-| macOS 13+ | [DMG](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.19/Sujian-1.4.19-mac-x64.dmg) | [DMG](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.19/Sujian-1.4.19-mac-arm64.dmg) |
-| Linux | [AppImage](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.19/Sujian-1.4.19-linux-x86_64.AppImage) · [DEB](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.19/Sujian-1.4.19-linux-amd64.deb) | [AppImage](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.19/Sujian-1.4.19-linux-arm64.AppImage) · [DEB](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.19/Sujian-1.4.19-linux-arm64.deb) |
+| Windows | [EXE](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.20/Sujian-1.4.20-win-x64.exe) | [EXE](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.20/Sujian-1.4.20-win-arm64.exe) |
+| macOS 13+ | [DMG](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.20/Sujian-1.4.20-mac-x64.dmg) | [DMG](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.20/Sujian-1.4.20-mac-arm64.dmg) |
+| Linux | [AppImage](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.20/Sujian-1.4.20-linux-x86_64.AppImage) · [DEB](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.20/Sujian-1.4.20-linux-amd64.deb) | [AppImage](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.20/Sujian-1.4.20-linux-arm64.AppImage) · [DEB](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.20/Sujian-1.4.20-linux-arm64.deb) |
 
 - **Windows** 双击 EXE 安装。安装包未做 Authenticode 签名。ARM64 版的 Pandoc 使用 Windows 11 的 x64 仿真。
 - **macOS** 挂载 DMG 后，将素笺拖到“应用程序”。此版本采用临时签名，首次启动时可能需要在“隐私与安全性”中允许打开。[Apple 打开应用说明](https://support.apple.com/en-us/102445)
 - **Linux** 赋予 AppImage 执行权限后打开，或通过软件包管理器安装 DEB。运行依赖发行版提供的 Chromium 系统库。
 
-安装包包含应用运行时、渲染资源、字体与 Pandoc。六种系统与架构组合均通过成品启动检查。[SHA-256 清单](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.19/SHA256SUMS.txt) · [构建与验证记录](https://github.com/peterwangze/sujian-markdown/actions/workflows/release.yml)
+安装包包含应用运行时、渲染资源、字体与 Pandoc。六种系统与架构组合均通过成品启动检查。[SHA-256 清单](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.20/SHA256SUMS.txt) · [构建与验证记录](https://github.com/peterwangze/sujian-markdown/actions/workflows/release.yml)
 
 点击窗口右下角的版本号，打开 **关于素笺 → 检查更新**。素笺会查询 GitHub 的最新正式版，告诉你是否已经是最新版。发现新版时，可以直接阅读更新内容，并下载适合当前系统和架构的安装包。Linux 可选择 AppImage 或 DEB。
 
-点击下载后，安装包会保存到系统的下载目录。下载进度可查看，也可以取消。文件大小和 SHA-256 校验通过后，用 **打开下载位置** 找到安装包并安装。检查和下载需要访问 GitHub，已安装的编辑器可继续离线使用。
+点击下载后可查看进度，也可以取消。大小和 SHA-256 校验通过后，直接点 **安装更新**。素笺会检查所有窗口的未保存文档，列出需要保存的文件。选择 **保存并安装** 后，再启动安装程序。取消保存或遇到磁盘冲突时，可回到文档继续处理。
+
+Windows 会打开安装向导，macOS 会打开 DMG，可把素笺拖到应用程序。Linux 的 DEB 由系统软件管理器打开，AppImage 会从下载好的新版文件重新启动。检查和下载需要访问 GitHub，已安装的编辑器可继续离线使用。
 
 在 **关于素笺** 底部点击 **在 GitHub 上点星**，可打开项目主页并点 Star。
 
-<img src="docs/images/sujian-about-update.png" alt="关于素笺的更新检查示例显示当前版本、新版说明和适配 Windows x64 的下载安装包按钮。" width="540">
+<img src="docs/images/sujian-install-update.png" alt="关于素笺显示安装包已通过校验，并提供安装更新。" width="540">
 
-*应用实测截图，使用示例新版展示下载入口。*
+*应用实测截图，使用示例新版展示安装入口。*
+
+<img src="docs/images/sujian-install-save.png" alt="安装前保存文档的窗口列出尚未保存的文件，并提供取消和保存并安装。" width="420">
 
 ## 开发与兼容范围
 

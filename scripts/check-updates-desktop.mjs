@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
-import { mkdir, mkdtemp, readFile, readdir } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, readdir, unlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -44,14 +44,134 @@ const nextRelease = release(nextVersion)
 const working = await mkdtemp(path.join(process.env.SUJIAN_UPDATE_TEST_ROOT || tmpdir(), 'sujian-updates-'))
 const profile = path.join(working, 'profile')
 const downloads = path.join(working, 'downloads')
+const originalDocument = path.join(working, '升级演示.md')
+const newDocument = path.join(working, '保留的新稿.md')
+const secondDocument = path.join(working, '另一个窗口.md')
+const originalText = '# 升级演示\n\n这份文档用于核对升级前的保存。\n'
+const secondText = '# 另一个窗口\n'
+const editedLine = '这段修改需要先保存。'
+const retryLine = '重试安装前的最后一次修改。'
+const newDraft = '新稿也需要在打开安装器前保存。'
+const secondEdit = '另一扇窗口里的修改也要保存。'
 await Promise.all([mkdir(profile), mkdir(downloads)])
+await Promise.all([
+  writeFile(originalDocument, originalText),
+  writeFile(secondDocument, secondText),
+  writeFile(path.join(profile, 'preferences.json'), JSON.stringify({ mode: 'source', autoSave: false, resume: false })),
+])
 const executablePath = process.env.SUJIAN_QA_EXE
-const args = ['--user-data-dir=' + profile, ...(executablePath ? [] : [project])]
+const args = ['--user-data-dir=' + profile, ...(executablePath ? [] : [project]), originalDocument]
 const app = await _electron.launch({ args, ...(executablePath && { executablePath }) })
 const page = await app.firstWindow()
 page.setDefaultTimeout(12000)
 const about = page.getByRole('dialog', { name: '关于素笺', exact: true })
 const button = name => about.getByRole('button', { name, exact: true })
+const versionButton = page.getByRole('button', { name: `关于素笺，当前版本 v${version}`, exact: true })
+const source = page.getByLabel('Markdown 源码')
+const sourceLine = text => source.locator('.cm-line').getByText(text, { exact: true })
+const installButton = button('安装更新')
+const savePrompt = window => window.getByRole('dialog', { name: '安装前保存文档', exact: true })
+
+async function documentAction(window, name) {
+  await window.getByRole('button', { name: '文档与视图', exact: true }).click()
+  await window.locator('.tool-menu-list').getByRole('button', { name, exact: true }).click()
+}
+
+async function appendSource(window, line) {
+  const editor = window.getByLabel('Markdown 源码')
+  await editor.press(process.platform === 'darwin' ? 'Meta+ArrowDown' : 'Control+End')
+  await window.keyboard.press('Enter')
+  await window.keyboard.insertText(line)
+  await window.keyboard.press('Enter')
+  await editor.locator('.cm-line').getByText(line, { exact: true }).waitFor()
+}
+
+async function verifyWindowsInstallation(network, destination, downloadButton) {
+  await installButton.waitFor()
+  if (process.env.SUJIAN_INSTALL_SCREENSHOT) await about.screenshot({ path: process.env.SUJIAN_INSTALL_SCREENSHOT })
+
+  const modified = Buffer.from(installerBytes)
+  modified[0] ^= 1
+  await writeFile(destination, modified)
+  await installButton.click()
+  await about.getByRole('alert').filter({ hasText: '安装包已被修改或替换，请重新下载。' }).waitFor()
+  assert.equal(await network.evaluate(state => state.installCalls.length), 0)
+  await unlink(destination)
+  await downloadButton.click()
+  await installButton.waitFor()
+  assert.deepEqual(await readFile(destination), installerBytes)
+
+  await button('关闭').click()
+  await page.getByRole('tab').filter({ hasText: path.basename(originalDocument) }).click()
+  await appendSource(page, editedLine)
+  await page.getByRole('button', { name: '新建文档', exact: true }).click()
+  await page.getByRole('tab', { selected: true }).filter({ hasText: '未命名.md' }).waitFor()
+  await source.focus()
+  await page.keyboard.insertText(newDraft)
+  await sourceLine(newDraft).waitFor()
+
+  const opened = app.waitForEvent('window')
+  await documentAction(page, '新建窗口')
+  const other = await opened
+  await other.waitForSelector('.application[data-ready="true"]')
+  await documentAction(other, '打开文件')
+  await other.getByRole('tab', { selected: true }).filter({ hasText: path.basename(secondDocument) }).waitFor()
+  await appendSource(other, secondEdit)
+
+  await versionButton.click()
+  const confirm = savePrompt(page)
+  const otherConfirm = savePrompt(other)
+  const saveAndInstall = scope => scope.getByRole('button', { name: '保存并安装', exact: true })
+  const cancelled = about.getByText('已取消安装', { exact: false })
+  await installButton.click()
+  await confirm.getByText(path.basename(originalDocument), { exact: true }).waitFor()
+  await confirm.getByText('未命名.md', { exact: true }).waitFor()
+  assert.equal(await otherConfirm.count(), 0)
+  const cancel = confirm.getByRole('button', { name: '取消', exact: true })
+  assert.equal(await cancel.evaluate(element => element === document.activeElement), true)
+  if (process.env.SUJIAN_INSTALL_PROMPT_SCREENSHOT) {
+    await confirm.screenshot({ path: process.env.SUJIAN_INSTALL_PROMPT_SCREENSHOT })
+  }
+  await cancel.click()
+  await cancelled.waitFor()
+  assert.equal(await readFile(originalDocument, 'utf8'), originalText)
+  assert.equal(await readFile(secondDocument, 'utf8'), secondText)
+  assert.equal(await network.evaluate(state => state.saveCalls), 0)
+  assert.equal(await network.evaluate(state => state.installCalls.length), 0)
+
+  await installButton.click()
+  await saveAndInstall(confirm).click()
+  await cancelled.waitFor()
+  assert.equal(await network.evaluate(state => state.saveCalls), 1)
+  assert.equal(await network.evaluate(state => state.installCalls.length), 0)
+  assert.equal(await network.evaluate(state => state.quitCalls), 0)
+  assert.equal(await otherConfirm.count(), 0)
+  await assert.rejects(readFile(newDocument), { code: 'ENOENT' })
+
+  await button('关闭').click()
+  await sourceLine(newDraft).waitFor()
+  await page.getByRole('tab').filter({ hasText: path.basename(originalDocument) }).click()
+  await sourceLine(editedLine).waitFor()
+  await appendSource(page, retryLine)
+  await network.evaluate(state => { state.cancelSave = false })
+  await versionButton.click()
+  await installButton.click()
+  await saveAndInstall(confirm).click()
+  await otherConfirm.getByText(path.basename(secondDocument), { exact: true }).waitFor()
+  await page.getByRole('dialog', { name: '准备安装更新', exact: true })
+    .getByText('文档已准备就绪，等待启动安装。', { exact: true }).waitFor()
+  assert.equal(await network.evaluate(state => state.installCalls.length), 0)
+  assert.equal(await readFile(newDocument, 'utf8'), newDraft)
+  await saveAndInstall(otherConfirm).click()
+  assert.deepEqual(await network.evaluate(state => state.waitForInstallation()), {
+    file: destination,
+    original: originalText + '\n' + editedLine + '\n\n' + retryLine + '\n',
+    newDocument: newDraft,
+    second: secondText + '\n' + secondEdit + '\n',
+  })
+  assert.equal(await network.evaluate(state => state.waitForQuit()), true)
+  console.log('Windows installation rejects a modified download, honors confirmation and Save As cancellations, and saves all windows before opening the verified installer.')
+}
 
 try {
   const runtime = await app.evaluate(({ app: nativeApp }) => ({
@@ -68,29 +188,60 @@ try {
   const destination = path.join(downloads, installerName)
   const downloadButton = button(runtime.platform === 'linux' ? '下载 AppImage' : '下载安装包')
 
-  const network = await app.evaluateHandle(({ app: nativeApp, shell }, fixture) => {
+  const network = await app.evaluateHandle(({ app: nativeApp, dialog, shell }, fixture) => {
     nativeApp.setPath('downloads', fixture.downloads)
+    const { readFileSync } = process.getBuiltinModule('node:fs')
     const originalFetch = globalThis.fetch
     const originalOpenPath = shell.openPath
     const originalReveal = shell.showItemInFolder
-    const state = { mode: 'current', requests: [], reveals: [] }
+    const originalSave = dialog.showSaveDialog
+    const originalOpen = dialog.showOpenDialog
+    const originalQuit = nativeApp.quit
+    const state = { mode: 'current', requests: [], reveals: [], installCalls: [], saveCalls: 0, quitCalls: 0, cancelSave: true }
     const waitFor = promise => Promise.race([promise, new Promise(resolve => setTimeout(resolve, 5000, null).unref())])
     const checkGate = new Promise(resolve => { state.finishCheck = resolve })
     let startTransfer
     const transfer = new Promise(resolve => { startTransfer = resolve })
     const reveal = new Promise(resolve => {
-      const capture = file => {
+      shell.showItemInFolder = file => {
         state.reveals.push(file)
         resolve(file)
       }
+    })
+    const readDocument = file => {
+      try {
+        return readFileSync(file, 'utf8')
+      } catch (error) {
+        if (error.code === 'ENOENT') return null
+        throw error
+      }
+    }
+    const installation = new Promise(resolve => {
       shell.openPath = async file => {
-        capture(file)
+        const invocation = {
+          file, original: readDocument(fixture.originalDocument), newDocument: readDocument(fixture.newDocument),
+          second: readDocument(fixture.secondDocument),
+        }
+        state.installCalls.push(invocation)
+        resolve(invocation)
         return ''
       }
-      shell.showItemInFolder = capture
+    })
+    dialog.showSaveDialog = async () => {
+      state.saveCalls++
+      return state.cancelSave ? { canceled: true } : { canceled: false, filePath: fixture.newDocument }
+    }
+    dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [fixture.secondDocument] })
+    const quit = new Promise(resolve => {
+      nativeApp.quit = () => {
+        state.quitCalls++
+        resolve(true)
+      }
     })
     state.waitForReveal = () => waitFor(reveal)
     state.waitForTransfer = () => waitFor(transfer)
+    state.waitForInstallation = () => waitFor(installation)
+    state.waitForQuit = () => waitFor(quit)
     globalThis.fetch = async (address, options) => {
       const url = typeof address === 'string' ? address : address.url ?? address.href
       if (!/^https?:\/\//.test(url)) return originalFetch(address, options)
@@ -125,16 +276,20 @@ try {
       globalThis.fetch = originalFetch
       shell.openPath = originalOpenPath
       shell.showItemInFolder = originalReveal
+      dialog.showSaveDialog = originalSave
+      dialog.showOpenDialog = originalOpen
+      nativeApp.quit = originalQuit
     }
     return state
   }, {
-    downloads, latest: latestUrl, current: currentRelease, next: nextRelease, incompatibleAssets,
+    downloads, originalDocument, newDocument, secondDocument, latest: latestUrl,
+    current: currentRelease, next: nextRelease, incompatibleAssets,
     installer: installer.browser_download_url, redirectedInstaller, installerSize: installerBytes.length,
   })
   const setMode = mode => network.evaluate((state, next) => { state.mode = next }, mode)
   try {
     await page.waitForSelector('.application[data-ready="true"]')
-    await page.getByRole('button', { name: `关于素笺，当前版本 v${version}`, exact: true }).click()
+    await versionButton.click()
     const check = button('检查更新')
     await check.click()
     await about.getByText('正在检查更新…', { exact: true }).waitFor()
@@ -163,6 +318,7 @@ try {
     await about.getByText('更新内容', { exact: true }).waitFor()
     await about.getByText(releaseNote, { exact: false }).waitFor()
     await about.getByText(installerName, { exact: false }).waitFor()
+    assert.equal(await installButton.count(), 0)
     for (const asset of incompatibleAssets) {
       assert.equal(await about.getByText(asset.name, { exact: false }).count(), 0)
     }
@@ -180,12 +336,14 @@ try {
     await button('取消下载').click()
     await about.getByText('已取消下载', { exact: true }).waitFor()
     assert.deepEqual(await readdir(downloads), [])
+    assert.equal(await installButton.count(), 0)
 
     await setMode('corrupt')
     await downloadButton.click()
     await error.waitFor()
     assert.match(await error.textContent(), /SHA-256|校验/)
     assert.deepEqual(await readdir(downloads), [])
+    assert.equal(await installButton.count(), 0)
 
     await setMode('newer')
     await downloadButton.click()
@@ -199,6 +357,7 @@ try {
     await button('打开下载位置').click()
     assert.equal(await network.evaluate(state => state.waitForReveal()), destination)
     console.log('Installer downloads clean up staging after cancel or bad checksum, save verified bytes, and reveal the destination on request.')
+    if (runtime.platform === 'win32') await verifyWindowsInstallation(network, destination, downloadButton)
   } finally {
     await network.evaluate(state => state.restore())
     await network.dispose()

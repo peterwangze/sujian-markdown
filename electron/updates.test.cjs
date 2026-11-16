@@ -5,6 +5,7 @@ const { tmpdir } = require('node:os');
 const path = require('node:path');
 const { test } = require('node:test');
 const { createUpdater } = require('./updates.cjs');
+const { prepareUpdateInstall, openPreparedUpdate } = require('./update-install.cjs');
 
 const latestUrl = 'https://api.github.com/repos/peterwangze/sujian-markdown/releases/latest';
 const releaseRoot = 'https://github.com/peterwangze/sujian-markdown/releases';
@@ -125,6 +126,8 @@ test('streams verified assets through a trusted redirect and creates unique comp
   const first = await updater.download({ assetName: windowsInstaller, directory, onProgress: event => progress.push(event) });
   assert.equal(first.fileName, windowsInstaller);
   assert.equal(first.bytes, installer.length);
+  assert.equal(first.format, 'EXE');
+  assert.equal(first.sha256, sha256(installer));
   assert.deepEqual(progress[0], { downloadedBytes: 0, totalBytes: installer.length });
   assert.deepEqual(progress.at(-1), { downloadedBytes: installer.length, totalBytes: installer.length });
   await fs.writeFile(first.filePath, 'existing installation package');
@@ -171,4 +174,77 @@ test('cancels an in-flight download and closes the stream without publishing a f
   } }), { name: 'AbortError' });
   assert.equal(cancelled, true);
   assert.deepEqual(await fs.readdir(directory), []);
+});
+
+async function savedInstaller(directory, suffix, format) {
+  const fileName = `Sujian-1.10.0-${suffix}`;
+  const filePath = path.join(directory, fileName);
+  await fs.writeFile(filePath, installer, { mode: 0o600 });
+  return { fileName, filePath, bytes: installer.length, sha256: sha256(installer), format };
+}
+
+test('hands verified installers to their OS and prepares the portable AppImage for a managed restart', async context => {
+  const directory = await temporaryFolder(context);
+  for (const [platform, suffix, format, action] of [
+    ['win32', 'win-x64.exe', 'EXE', 'installer-opened'],
+    ['darwin', 'mac-arm64.dmg', 'DMG', 'disk-image-opened'],
+    ['linux', 'linux-arm64.deb', 'DEB', 'package-manager-opened'],
+    ['linux', 'linux-arm64.AppImage', 'AppImage', 'appimage-ready'],
+  ]) {
+    const descriptor = await savedInstaller(directory, suffix, format);
+    const opened = [];
+    const prepared = await prepareUpdateInstall(descriptor, { platform });
+    const result = await openPreparedUpdate(prepared, { openPath: filePath => { opened.push(filePath); return ''; } });
+    assert.deepEqual(result, { action, filePath: descriptor.filePath });
+    assert.deepEqual(opened, format === 'AppImage' ? [] : [descriptor.filePath]);
+    assert.deepEqual(await fs.readFile(descriptor.filePath), installer);
+    if (format === 'AppImage' && process.platform !== 'win32') {
+      assert.ok((await fs.stat(descriptor.filePath)).mode & 0o100);
+    }
+  }
+});
+
+test('rejects missing, changed and substituted local files at install time', async context => {
+  const directory = await temporaryFolder(context);
+  const descriptor = await savedInstaller(directory, 'win-x64.exe', 'EXE');
+  const platform = 'win32';
+  const openPath = () => assert.fail('Unverified file must never be launched');
+  await assert.rejects(prepareUpdateInstall(descriptor, { platform: 'darwin' }), /系统不匹配/);
+  await assert.rejects(openPreparedUpdate(descriptor, { openPath }), /先校验/);
+  await fs.writeFile(descriptor.filePath, Buffer.alloc(installer.length));
+  await assert.rejects(prepareUpdateInstall(descriptor, { platform }), /被修改或替换/);
+
+  await fs.writeFile(descriptor.filePath, installer);
+  const prepared = await prepareUpdateInstall(descriptor, { platform });
+  await fs.rename(descriptor.filePath, `${descriptor.filePath}.old`);
+  await fs.writeFile(descriptor.filePath, installer);
+  await assert.rejects(openPreparedUpdate(prepared, { openPath }), /被修改或替换/);
+
+  await fs.unlink(descriptor.filePath);
+  await assert.rejects(prepareUpdateInstall(descriptor, { platform }), /已移动或删除/);
+});
+
+test('refuses a symbolic link substituted for the downloaded installer', async context => {
+  const directory = await temporaryFolder(context);
+  const descriptor = await savedInstaller(directory, 'win-x64.exe', 'EXE');
+  const original = `${descriptor.filePath}.original`;
+  await fs.rename(descriptor.filePath, original);
+  try {
+    await fs.symlink(original, descriptor.filePath, 'file');
+  } catch (error) {
+    if (error.code !== 'EPERM') throw error;
+    context.skip('Creating symbolic links is unavailable on this host');
+    return;
+  }
+  await assert.rejects(prepareUpdateInstall(descriptor, { platform: 'win32' }), /被修改或替换/);
+});
+
+test('reports a missing system package association and respects cancellation', async context => {
+  const directory = await temporaryFolder(context);
+  const descriptor = await savedInstaller(directory, 'linux-amd64.deb', 'DEB');
+  const cancelled = AbortSignal.abort();
+  await assert.rejects(prepareUpdateInstall(descriptor, { platform: 'linux', signal: cancelled }), { name: 'AbortError' });
+  const prepared = await prepareUpdateInstall(descriptor, { platform: 'linux' });
+  await assert.rejects(openPreparedUpdate(prepared, { openPath: async () => 'No application installed' }), /系统包管理器/);
+  await assert.rejects(openPreparedUpdate(prepared, { signal: cancelled, openPath: () => assert.fail() }), { name: 'AbortError' });
 });

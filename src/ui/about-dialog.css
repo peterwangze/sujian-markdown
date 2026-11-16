@@ -27,6 +27,8 @@
 .update-progress { display: grid; gap: 6px; }
 .update-progress > div { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .update-progress progress { width: 100%; accent-color: var(--accent); }
+.update-complete > .update-install-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.update-unsaved-files { max-height: 30vh; margin: 0; padding-inline-start: 20px; overflow: auto; overflow-wrap: anywhere; }
 .about-dialog footer { flex-wrap: wrap; }
 .about-dialog footer > .about-star { display: inline-flex; align-items: center; gap: 5px; margin-inline-end: auto; border-color: transparent; color: var(--muted); }
 .about-dialog footer > .about-star:hover { color: var(--accent-ink); }

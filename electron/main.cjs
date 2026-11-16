@@ -1,4 +1,5 @@
 const { app, BrowserWindow, ClipboardItem, Menu, clipboard, dialog, ipcMain, net, protocol, session, shell } = require('electron');
+const { randomUUID } = require('node:crypto');
 const fs = require('node:fs/promises');
 const { existsSync, mkdtempSync } = require('node:fs');
 const path = require('node:path');
@@ -12,6 +13,7 @@ const { acceptedExtensions: fontExtensions, createFontStore, fontRoute } = requi
 const { commitGitWorkspace, initGitWorkspace, inspectGitWorkspace } = require('./git-workspace.cjs');
 const { listGitDocumentHistory, readGitDocumentRevision } = require('./git-document-history.cjs');
 const { createStorage } = require('./storage.cjs');
+const { prepareUpdateInstall, openPreparedUpdate } = require('./update-install.cjs');
 const { createUpdater } = require('./updates.cjs');
 const { createWatcher } = require('./watcher.cjs');
 const { findDocuments, listDirectory, searchDirectory } = require('./workspace.cjs');
@@ -33,6 +35,7 @@ let quitting = false;
 let servicesReady = false;
 let remoteMediaAllowed = false;
 let currentHotkeys = '';
+let updateInstallation = null;
 
 if (smokeTest) app.setPath('userData', mkdtempSync(path.join(tmpdir(), 'sujian-smoke-')));
 app.setName(appName);
@@ -118,8 +121,15 @@ function focusWindow(state) {
   state.window.focus();
 }
 
+function cancelUpdateForWorkspaceChange() {
+  if (updateInstallation?.handoff) return false;
+  updateInstallation?.controller.abort(new Error('有新的文件或窗口打开，请重新开始安装。'));
+  return true;
+}
+
 async function deliverPaths(paths) {
   if (!paths.length) return;
+  if (!cancelUpdateForWorkspaceChange()) return;
   if (!servicesReady) {
     pendingPaths.push(...paths);
     return;
@@ -160,6 +170,7 @@ async function flushCommands(state) {
 }
 
 async function deliverCommand(command) {
+  if (!cancelUpdateForWorkspaceChange()) return;
   if (!servicesReady) {
     pendingCommands.push(command);
     return;
@@ -184,6 +195,7 @@ function requestClose(window, event) {
 }
 
 async function createWindow(initialPaths = [], commands = []) {
+  if (!cancelUpdateForWorkspaceChange()) return null;
   const icon = app.isPackaged ? path.join(process.resourcesPath, 'icon.png') : path.join(app.getAppPath(), 'build', 'icon.png');
   const window = new BrowserWindow({
     width: 1320, height: 900, minWidth: 800, minHeight: 560,
@@ -211,8 +223,16 @@ async function createWindow(initialPaths = [], commands = []) {
     state.search?.abort();
     state.updateCheck?.abort();
     state.updateDownload?.abort();
+    if (updateInstallation?.windows.has(state) && !updateInstallation.handoff) {
+      updateInstallation.controller.abort(new Error('有窗口已关闭，请重新开始安装。'));
+    }
     states.delete(windowId);
     if (quitting && states.size === 0) app.quit();
+  });
+  window.webContents.on('render-process-gone', () => {
+    if (updateInstallation?.windows.has(state) && !updateInstallation.handoff) {
+      updateInstallation.controller.abort(new Error('有窗口已停止响应，请重新开始安装。'));
+    }
   });
   window.webContents.setWindowOpenHandler(({ url }) => {
     void safeOpenExternal(url).catch(() => {});
@@ -283,6 +303,73 @@ function setHotkeys(hotkeys) {
   currentHotkeys = signature;
 }
 
+function publishUpdateInstall(state, transaction, phase) {
+  if (!state.window.isDestroyed()) {
+    state.window.webContents.send('sujian:update-install-state', { id: transaction.id, phase });
+  }
+}
+
+function prepareWindowForUpdate(state, transaction) {
+  const { signal } = transaction.controller;
+  signal.throwIfAborted();
+  return new Promise((resolve, reject) => {
+    const finish = (complete, value) => {
+      signal.removeEventListener('abort', aborted);
+      transaction.awaiting = null;
+      complete(value);
+    };
+    const aborted = () => finish(reject, signal.reason);
+    signal.addEventListener('abort', aborted, { once: true });
+    transaction.awaiting = { state, ready: () => finish(resolve) };
+    try {
+      publishUpdateInstall(state, transaction, 'prepare');
+    } catch (error) {
+      finish(reject, error);
+    }
+  });
+}
+
+async function installDownloadedUpdate(owner, installId) {
+  const downloaded = owner.downloadedUpdate;
+  if (!downloaded || installId !== downloaded.id) return { status: 'error', message: '请先下载并校验这个更新包。' };
+  if (updateInstallation) return { status: 'error', message: '有一个更新正在准备安装。' };
+  const windows = new Set([owner, ...states.values()]);
+  if ([...windows].some(state => !state.ready || !state.closeManaged || state.closePending)) {
+    return { status: 'error', message: '有窗口仍在打开或关闭，请稍后重试。' };
+  }
+
+  const transaction = { id: randomUUID(), controller: new AbortController(), windows };
+  updateInstallation = transaction;
+  let started = false;
+  const release = () => {
+    updateInstallation = null;
+    for (const state of windows) publishUpdateInstall(state, transaction, 'done');
+    if (!started && !owner.window.isDestroyed()) focusWindow(owner);
+  };
+  try {
+    for (const state of windows) publishUpdateInstall(state, transaction, 'hold');
+    for (const state of windows) await prepareWindowForUpdate(state, transaction);
+    const { signal } = transaction.controller;
+    const prepared = await prepareUpdateInstall(downloaded.file, { signal });
+    signal.throwIfAborted();
+    transaction.handoff = true;
+    const opened = await openPreparedUpdate(prepared, { signal, openPath: filePath => shell.openPath(filePath) });
+    if (opened.action === 'appimage-ready') app.relaunch({ execPath: opened.filePath, args: [] });
+    started = true;
+    setImmediate(() => {
+      for (const state of windows) state.canClose = true;
+      app.quit();
+      release();
+    });
+    return { status: 'started' };
+  } catch (error) {
+    if (error.name === 'AbortError') return { status: 'cancelled' };
+    return { status: 'error', message: error.message };
+  } finally {
+    if (!started) release();
+  }
+}
+
 function installIpc({ assets, conversion, fonts, storage, operations }) {
   const handle = (name, callback) => ipcMain.handle(`sujian:${name}`, (event, ...args) => {
     const window = BrowserWindow.fromWebContents(event.sender);
@@ -295,6 +382,7 @@ function installIpc({ assets, conversion, fonts, storage, operations }) {
     if (state.updateCheck || state.updateDownload) return { status: 'error', message: '更新检查或下载正在进行。' };
     const task = new AbortController();
     state.updateCheck = task;
+    state.downloadedUpdate = null;
     try {
       const arch = app.runningUnderARM64Translation ? 'arm64' : process.arch;
       state.updater ??= createUpdater({
@@ -313,6 +401,7 @@ function installIpc({ assets, conversion, fonts, storage, operations }) {
     if (!state.updater) return { status: 'error', message: '请先检查更新。' };
     const task = new AbortController();
     state.updateDownload = task;
+    state.downloadedUpdate = null;
     let lastProgressAt = 0;
     try {
       const result = await state.updater.download({
@@ -324,7 +413,10 @@ function installIpc({ assets, conversion, fonts, storage, operations }) {
           state.window.webContents.send('sujian:update-download-progress', progress);
         },
       });
-      return { status: 'completed', ...result };
+      const installId = randomUUID();
+      state.downloadedUpdate = { id: installId, file: result };
+      const { filePath, fileName, bytes } = result;
+      return { status: 'completed', installId, filePath, fileName, bytes };
     } catch (error) {
       if (task.signal.aborted) return { status: 'cancelled' };
       return { status: 'error', message: error.message };
@@ -333,6 +425,15 @@ function installIpc({ assets, conversion, fonts, storage, operations }) {
     }
   });
   handle('cancel-update-download', state => { state.updateDownload?.abort(); });
+  handle('install-update', installDownloadedUpdate);
+  handle('update-install-response', (state, id, status, message) => {
+    const transaction = updateInstallation;
+    if (!transaction || transaction.id !== id || transaction.handoff || !transaction.windows.has(state)) return;
+    if (status === 'cancelled') transaction.controller.abort();
+    if (status === 'error') transaction.controller.abort(new Error(typeof message === 'string' ? message.slice(0, 1000) : '有窗口未完成保存。'));
+    if (status === 'needs-save' && transaction.awaiting?.state === state) focusWindow(state);
+    if (status === 'ready' && transaction.awaiting?.state === state) transaction.awaiting.ready();
+  });
   handle('open-files-dialog', async ({ window }) => {
     const selected = await dialog.showOpenDialog(window, { title: '打开 Markdown 文档', properties: ['openFile', 'multiSelections'], filters });
     if (selected.canceled) return [];

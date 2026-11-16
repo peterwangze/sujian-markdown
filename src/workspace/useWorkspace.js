@@ -184,6 +184,12 @@ export function useWorkspace(notify, beforeClose) {
 
   const persistDrafts = useCallback(() => Promise.all(stateRef.current.docs.map(writeDraft)), [writeDraft])
 
+  const persistSession = useCallback(() => {
+    const snapshot = { ...settingsRef.current, openPaths: stateRef.current.docs.map(doc => doc.path).filter(Boolean) }
+    serializedPreferences.current = serializedPreferences.current.catch(() => {}).then(() => desktop.savePreferences(snapshot))
+    return serializedPreferences.current
+  }, [])
+
   const save = useCallback((id, options = {}) => {
     const previous = pendingSaves.current.get(id) ?? Promise.resolve()
     const task = previous.catch(() => {}).then(async () => {
@@ -221,6 +227,30 @@ export function useWorkspace(notify, beforeClose) {
     task.then(forget, forget)
     return task
   }, [amend, notify, recordRecent, writeDraft])
+
+  const unsavedForUpdate = useCallback(async () => {
+    beforeClose()
+    await Promise.allSettled(pendingSaves.current.values())
+    return stateRef.current.docs.filter(isDirty)
+  }, [beforeClose])
+
+  const prepareUpdateExit = useCallback(async (saveChanges, isCurrent) => {
+    const unsaved = await unsavedForUpdate()
+    if (unsaved.length && !saveChanges) throw new Error('发现新的未保存改动，请重新开始安装。')
+    for (const doc of unsaved) {
+      if (!isCurrent()) return false
+      if (getDocument(doc.id)?.conflict) throw new Error(`请先处理「${doc.name}」的磁盘冲突。`)
+      if (!await save(doc.id, { quiet: true })) {
+        if (getDocument(doc.id)?.conflict) throw new Error(`请先处理「${doc.name}」的磁盘冲突。`)
+        return false
+      }
+    }
+    if (!isCurrent()) return false
+    if ((await unsavedForUpdate()).length) throw new Error('仍有未保存的改动，请重新开始安装。')
+    await persistDrafts()
+    await persistSession()
+    return isCurrent()
+  }, [getDocument, persistDrafts, persistSession, save, unsavedForUpdate])
 
   const close = useCallback(async (id, disposition) => {
     const doc = stateRef.current.docs.find(item => item.id === id)
@@ -343,10 +373,8 @@ export function useWorkspace(notify, beforeClose) {
 
   useEffect(() => {
     if (!ready) return
-    const snapshot = { ...settings, openPaths: JSON.parse(paths) }
-    serializedPreferences.current = serializedPreferences.current.catch(() => {}).then(() => desktop.savePreferences(snapshot))
-    serializedPreferences.current.catch(error => notify(error.message, true))
-  }, [ready, settings, paths, notify])
+    persistSession().catch(error => notify(error.message, true))
+  }, [ready, settings, paths, notify, persistSession])
 
   useEffect(() => {
     if (!ready) return
@@ -380,6 +408,7 @@ export function useWorkspace(notify, beforeClose) {
   return {
     docs: state.docs, active: state.docs.find(doc => doc.id === state.activeId), settings, ready, saving, recoverable,
     select, configure, add, append, amend, close, reopen, openFiles, openPath, getDocument, getDocumentByPath, replaceDocumentText, replaceReviewedText, save, resolveConflict, recover,
+    unsavedForUpdate, prepareUpdateExit,
     removeRecovery: async id => { await discardDraft(id); setRecoverable(items => items.filter(item => item.id !== id)) },
   }
 }
