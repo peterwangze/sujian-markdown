@@ -287,6 +287,7 @@ function installIpc({ assets, conversion, fonts, storage, operations }) {
     if (!state || !event.senderFrame || event.senderFrame.parent || !trustedRenderer(event.senderFrame.url)) throw new Error('Untrusted editor frame.');
     return callback(state, ...args);
   });
+  handle('app-version', () => app.getVersion());
   handle('open-files-dialog', async ({ window }) => {
     const selected = await dialog.showOpenDialog(window, { title: '打开 Markdown 文档', properties: ['openFile', 'multiSelections'], filters });
     if (selected.canceled) return [];
@@ -513,6 +514,13 @@ async function launch(initialCommand) {
         check();
       })`);
       if (!ready) throw new Error('Renderer did not mount its application.');
+      const displayedVersion = await window.webContents.executeJavaScript(`(async () => ({
+        runtime: await window.sujian.appVersion(),
+        label: document.querySelector('.status-version')?.textContent,
+      }))()`);
+      if (displayedVersion.runtime !== app.getVersion() || displayedVersion.label !== 'v' + app.getVersion()) {
+        throw new Error('The version shown in the status bar does not match the running application.');
+      }
       const sample = path.join(userDataPath, 'smoke.md');
       const openedPath = await window.webContents.executeJavaScript(`(async () => {
         const path = ${JSON.stringify(sample)};

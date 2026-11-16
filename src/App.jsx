@@ -22,6 +22,8 @@ import { fontStack, useFonts } from './workspace/fonts.js'
 import { applyTheme, resolveTheme } from './theme/themes.js'
 
 const ReviewDialog = lazy(() => import('./review/ReviewDialog.jsx'))
+const builtVersion = typeof __SUJIAN_VERSION__ === 'string' ? __SUJIAN_VERSION__ : ''
+const releaseHistory = 'https://github.com/peterwangze/sujian-markdown/releases'
 
 const visualExports = new Set(['pdf', 'html', 'html-plain', 'png', 'docx', 'epub', 'print'])
 const fileActions = [
@@ -67,6 +69,7 @@ export default function App() {
   const workspace = useWorkspace(notify, flushEditor)
   const fonts = useFonts(notify)
   const { docs, active, settings, configure, amend, ready } = workspace
+  const [appVersion, setAppVersion] = useState(builtVersion)
   const [sidebar, setSidebar] = useState('files')
   const [dialog, setDialog] = useState(null)
   const reviewRequest = useRef(null)
@@ -89,6 +92,7 @@ export default function App() {
   }, [active?.id, createdFileFocus])
   const requestedJump = useRef(null)
   const mode = active?.mode ?? settings.mode
+  const versionLabel = appVersion ? 'v' + appVersion : ''
   const reviewDoc = dialog?.type === 'review' ? docs.find(doc => doc.id === dialog.docId &&
     (!dialog.gitHistoryPage || doc.path === dialog.expectedPath)) : null
   const reviewRequestId = reviewDoc ? dialog.requestId : null
@@ -123,6 +127,15 @@ export default function App() {
   }, [active?.id, dialog, historyDoc, reviewDoc])
 
   useEffect(() => { if (dialog) setContext(null) }, [dialog])
+
+  useEffect(() => {
+    if (!desktop.appVersion) return
+    let mounted = true
+    desktop.appVersion().then(version => {
+      if (mounted && typeof version === 'string' && version) setAppVersion(version)
+    }).catch(() => {})
+    return () => { mounted = false }
+  }, [])
 
   useLayoutEffect(() => {
     reviewRequest.current = reviewRequestId
@@ -864,11 +877,20 @@ export default function App() {
     <footer className="statusbar">
       <div>{active ? <><CircleCheck size={15}/><span>{workspace.saving === active.id ? '正在保存' : isDirty(active) ? '有未保存的改动' : active.path ? '已保存' : active.example ? '写作手册' : '新文档'}</span></> : <span>无打开的文档</span>}</div>
       <div>{workspace.recoverable.length > 0 && !settings.sidebar && <button onClick={() => setDialog({ type: 'recovery' })}>恢复草稿</button>}
-        {active && <><span>{selection ? '选中 ' + wordCount(selection) + ' / ' : '字数 '} {words}</span><span className="status-rule"/><span>{active.encoding?.toUpperCase() || 'UTF-8'} / Markdown</span></>}</div>
+        {active && <><span>{selection ? '选中 ' + wordCount(selection) + ' / ' : '字数 '} {words}</span>
+          <span className="status-rule status-format" aria-hidden="true"/><span className="status-format">{active.encoding?.toUpperCase() || 'UTF-8'} / Markdown</span></>}
+        <button type="button" className="status-version" aria-haspopup="dialog" title="关于素笺"
+          aria-label={versionLabel ? `关于素笺，当前版本 ${versionLabel}` : '关于素笺'}
+          onClick={() => setDialog({ type: 'about' })}>{versionLabel || '关于素笺'}</button>
+      </div>
     </footer>
     {message && <div className={'toast ' + (message.error ? 'error' : '')} role={message.error ? 'alert' : 'status'}>
       {message.error ? <AlertTriangle size={17}/> : <CircleCheck size={17}/>} {message.text}
     </div>}
+    {dialog?.type === 'about' && <Modal title="关于素笺" onClose={closeDialog}>
+      <dl className="about-version"><dt>当前版本</dt><dd>{versionLabel || '暂未取得版本信息'}</dd></dl>
+      <footer><button type="button" onClick={() => run(() => desktop.openExternal(releaseHistory))}>查看发布记录</button></footer>
+    </Modal>}
     {dialog?.type === 'git-workspace' && <GitWorkspaceDialog directory={dialog.directory} workspacePath={settings.workspace}
       inspect={desktop.gitWorkspaceStatus} initialize={desktop.initGitWorkspace} commit={commitGitChanges}
       unsaved={unsavedGitDocuments} saveDocuments={saveGitDocuments}

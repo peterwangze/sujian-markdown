@@ -1,14 +1,20 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { EditorState } from '@codemirror/state';
+import { ensureSyntaxTree } from '@codemirror/language';
 import { markdown } from '@codemirror/lang-markdown';
 import { formatMarkdown } from './format.js';
 import { formatSourceInlineSelection, removeSourceInlineFormat, setSourceHeading } from './source-format.js';
 
+function parsed(state) {
+  assert.ok(ensureSyntaxTree(state, state.doc.length, Infinity));
+  return state.update().state;
+}
+
 function editor(doc, anchor, head = anchor) {
   return {
-    state: EditorState.create({ doc, selection: { anchor, head }, extensions: markdown() }),
-    dispatch(update) { this.state = this.state.update(update).state; },
+    state: parsed(EditorState.create({ doc, selection: { anchor, head }, extensions: markdown() })),
+    dispatch(update) { this.state = parsed(this.state.update(update).state); },
   };
 }
 

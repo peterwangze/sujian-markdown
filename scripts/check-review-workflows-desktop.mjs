@@ -8,6 +8,7 @@ import { promisify } from 'node:util'
 import { _electron } from 'playwright'
 
 const project = path.resolve(fileURLToPath(new URL('../', import.meta.url)))
+const { version, homepage } = JSON.parse(await readFile(path.join(project, 'package.json'), 'utf8'))
 const working = await mkdtemp(path.join(tmpdir(), 'sujian-review-'))
 const repo = path.join(working, 'workspace')
 const records = path.join(repo, 'records')
@@ -57,6 +58,50 @@ const source = page.getByLabel('Markdown 源码')
 const sourceLine = text => source.locator('.cm-line').getByText(text, { exact: true })
 const review = dialog('审阅修订稿')
 
+async function assertAboutVersion() {
+  assert.equal(await app.evaluate(({ app: nativeApp }) => nativeApp.getVersion()), version)
+  assert.equal(await page.evaluate(() => window.sujian.appVersion()), version)
+  const displayVersion = 'v' + version
+  const versionButton = button('关于素笺，当前版本 ' + displayVersion, page.locator('.statusbar'))
+  const about = dialog('关于素笺')
+  await versionButton.waitFor()
+  assert.equal((await versionButton.textContent()).trim(), displayVersion)
+  await versionButton.click()
+  await about.getByText('当前版本', { exact: true }).waitFor()
+  await about.getByText(displayVersion, { exact: true }).waitFor()
+  if (process.env.SUJIAN_ABOUT_SCREENSHOT) await about.screenshot({ path: process.env.SUJIAN_ABOUT_SCREENSHOT })
+  await page.keyboard.press('Escape')
+  await about.waitFor({ state: 'hidden' })
+
+  await versionButton.press('Enter')
+  const external = await app.evaluateHandle(({ shell }) => {
+    const openExternal = shell.openExternal
+    let timeout
+    const openedAddress = new Promise(resolve => {
+      timeout = setTimeout(resolve, 10_000, null)
+      timeout.unref()
+      shell.openExternal = async address => { resolve(address) }
+    })
+    return {
+      openedAddress,
+      restore() {
+        clearTimeout(timeout)
+        shell.openExternal = openExternal
+      },
+    }
+  })
+  try {
+    await button('查看发布记录', about).click()
+    assert.equal(await external.evaluate(capture => capture.openedAddress), homepage + '/releases')
+  } finally {
+    await external.evaluate(capture => capture.restore())
+    await external.dispose()
+  }
+  await button('关闭', about).click()
+  await about.waitFor({ state: 'hidden' })
+  console.log('The status bar and About show the running Electron app version, and the release history opens through the desktop link handler.')
+}
+
 async function documentAction(name) {
   await button('文档与视图').click()
   await button(name, page.locator('.tool-menu-list')).click()
@@ -100,6 +145,7 @@ async function openFileComparison() {
 
 try {
   await page.waitForSelector('.application[data-ready="true"]')
+  await assertAboutVersion()
   await tab('验证 记录.md').click()
   await tabAction('requirements.md', '审阅修订稿')
   await review.waitFor()
