@@ -188,16 +188,21 @@ try {
   const destination = path.join(downloads, installerName)
   const downloadButton = button(runtime.platform === 'linux' ? '下载 AppImage' : '下载安装包')
 
-  const network = await app.evaluateHandle(({ app: nativeApp, dialog, shell }, fixture) => {
+  const network = await app.evaluateHandle(({ app: nativeApp, dialog, net, session, shell }, fixture) => {
     nativeApp.setPath('downloads', fixture.downloads)
+    const { EventEmitter } = process.getBuiltinModule('node:events')
     const { readFileSync } = process.getBuiltinModule('node:fs')
-    const originalFetch = globalThis.fetch
+    const { PassThrough, Readable } = process.getBuiltinModule('node:stream')
+    const originalRequest = net.request
     const originalOpenPath = shell.openPath
     const originalReveal = shell.showItemInFolder
     const originalSave = dialog.showSaveDialog
     const originalOpen = dialog.showOpenDialog
     const originalQuit = nativeApp.quit
-    const state = { mode: 'current', requests: [], reveals: [], installCalls: [], saveCalls: 0, quitCalls: 0, cancelSave: true }
+    const state = {
+      mode: 'current', requests: [], chromiumRequests: [], reveals: [], installCalls: [],
+      saveCalls: 0, quitCalls: 0, cancelSave: true,
+    }
     const waitFor = promise => Promise.race([promise, new Promise(resolve => setTimeout(resolve, 5000, null).unref())])
     const checkGate = new Promise(resolve => { state.finishCheck = resolve })
     let startTransfer
@@ -242,38 +247,76 @@ try {
     state.waitForTransfer = () => waitFor(transfer)
     state.waitForInstallation = () => waitFor(installation)
     state.waitForQuit = () => waitFor(quit)
-    globalThis.fetch = async (address, options) => {
-      const url = typeof address === 'string' ? address : address.url ?? address.href
-      if (!/^https?:\/\//.test(url)) return originalFetch(address, options)
-      state.requests.push(url)
-      if (url === fixture.latest) {
-        if (state.mode === 'offline') throw new TypeError('net::ERR_INTERNET_DISCONNECTED')
-        if (state.mode === 'current') {
-          await checkGate
-          return Response.json(fixture.current)
+    net.request = options => {
+      const url = typeof options === 'string' ? options : options.url
+      if (!/^https?:\/\//.test(url)) return originalRequest.call(net, options)
+      state.chromiumRequests.push({
+        defaultSession: options.session ? options.session === session.defaultSession : !options.partition,
+        redirect: options.redirect,
+      })
+      const request = new EventEmitter()
+      let closed = false
+      let response
+      const close = () => {
+        if (closed) return
+        closed = true
+        request.emit('close')
+      }
+      const reply = (statusCode, bytes, contentType, hold = false) => {
+        if (closed) return
+        response = Object.assign(hold ? new PassThrough() : Readable.from([bytes]), {
+          statusCode,
+          headers: { 'content-type': [contentType], 'content-length': [String(bytes.length)] },
+        })
+        response.once('end', close)
+        response.once('close', close)
+        request.emit('response', response)
+        if (hold) {
+          response.write(bytes.subarray(0, 32 * 1024))
+          startTransfer(true)
         }
-        if (state.mode === 'incompatible') return Response.json({ ...fixture.next, assets: fixture.incompatibleAssets })
-        return Response.json(fixture.next)
       }
-      if (url === fixture.installer) {
-        return Response.redirect(fixture.redirectedInstaller, 302)
+      request.setHeader = () => {}
+      request.abort = () => {
+        if (closed) return
+        closed = true
+        request.emit('abort')
+        response?.emit('aborted')
+        response?.destroy()
+        request.emit('close')
       }
-      if (url === fixture.redirectedInstaller) {
-        const bytes = Buffer.alloc(fixture.installerSize, 0x73)
-        if (state.mode === 'corrupt') bytes[0] ^= 1
-        const data = state.mode === 'held' ? new ReadableStream({
-          start(controller) {
-            controller.enqueue(bytes.subarray(0, 32 * 1024))
-            startTransfer(true)
-          },
-        }) : bytes
-        const headers = { 'content-type': 'application/octet-stream', 'content-length': String(bytes.length) }
-        return new Response(data, { headers })
+      const deliver = async address => {
+        if (closed) return
+        state.requests.push(address)
+        if (address === fixture.latest) {
+          if (state.mode === 'offline') throw new Error('net::ERR_INTERNET_DISCONNECTED')
+          const release = state.mode === 'current' ? await checkGate.then(() => fixture.current) : fixture.next
+          const assets = state.mode === 'incompatible' ? fixture.incompatibleAssets : release.assets
+          reply(200, Buffer.from(JSON.stringify({ ...release, assets })), 'application/json')
+        } else if (address === fixture.installer) {
+          request.emit('redirect', 302, 'GET', fixture.redirectedInstaller, { location: [fixture.redirectedInstaller] })
+          if (!closed) {
+            request.emit('error', new Error('net::ERR_ABORTED'))
+            close()
+          }
+        } else if (address === fixture.redirectedInstaller) {
+          const bytes = Buffer.alloc(fixture.installerSize, 0x73)
+          if (state.mode === 'corrupt') bytes[0] ^= 1
+          reply(200, bytes, 'application/octet-stream', state.mode === 'held')
+        } else {
+          reply(404, Buffer.alloc(0), 'text/plain')
+        }
       }
-      return new Response(null, { status: 404 })
+      request.end = () => queueMicrotask(() => {
+        void deliver(url).catch(error => {
+          if (!closed) request.emit('error', error)
+          close()
+        })
+      })
+      return request
     }
     state.restore = () => {
-      globalThis.fetch = originalFetch
+      net.request = originalRequest
       shell.openPath = originalOpenPath
       shell.showItemInFolder = originalReveal
       dialog.showSaveDialog = originalSave
@@ -303,7 +346,7 @@ try {
     await check.click()
     const error = about.getByRole('alert')
     await error.waitFor()
-    assert.match(await error.textContent(), /检查更新|网络|离线/)
+    assert.match(await error.textContent(), /无法连接 GitHub.*系统代理/)
     assert.equal(await downloadButton.count(), 0)
 
     await setMode('incompatible')
@@ -353,6 +396,9 @@ try {
     const downloadRequests = await network.evaluate((state, latest) => state.requests.filter(url => url !== latest), latestUrl)
     const downloadRoute = [installer.browser_download_url, redirectedInstaller]
     assert.deepEqual(downloadRequests, [...downloadRoute, ...downloadRoute, ...downloadRoute])
+    const chromiumRequests = await network.evaluate(state => state.chromiumRequests)
+    assert.equal(chromiumRequests.length, 4 + downloadRequests.length)
+    assert.equal(chromiumRequests.every(request => request.defaultSession && request.redirect === 'manual'), true)
     assert.deepEqual(await network.evaluate(state => state.reveals), [])
     await button('打开下载位置').click()
     assert.equal(await network.evaluate(state => state.waitForReveal()), destination)

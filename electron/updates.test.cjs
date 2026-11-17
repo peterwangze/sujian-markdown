@@ -84,6 +84,16 @@ test('distinguishes up-to-date, newer local builds and prereleases and rejects d
   await assert.rejects(prerelease.updater.check(), /正式发布/);
 });
 
+test('times out when the network transport never returns release headers', async context => {
+  context.mock.timers.enable({ apis: ['setTimeout'] });
+  const updater = createUpdater({ currentVersion: '1.9.9', fetchImpl: (_url, { signal }) => new Promise((_resolve, reject) => {
+    signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+  }) });
+  const rejected = assert.rejects(updater.check(), /检查更新超时/);
+  context.mock.timers.tick(15_000);
+  await rejected;
+});
+
 test('uses the exact verified checksum manifest only when the API asset digest is absent', async () => {
   const manifest = Buffer.from(`${sha256(installer)}  ${windowsInstaller}\n`);
   const manifestAsset = asset('SHA256SUMS.txt', manifest);

@@ -77,6 +77,7 @@
 | `UI-08` 检查更新与下载安装包 | 在 **关于素笺 → 检查更新** 核对当前已是最新版、发现新版、没有适配包以及网络失败。发现新版时核对更新说明、适配包名称和架构，下载一份并核对进度、取消、校验失败、重试及下载位置。 | Windows Electron 通过模拟发布响应实测各状态、HTTP 重定向、进度、取消清理、SHA-256 校验失败、重试及成功定位。另用实际下载模块从 GitHub 下载并校验 v1.4.17 Windows x64 安装包。三平台和两种架构的选包规则通过单元测试。见 `check-updates-desktop.mjs`、`electron/updates.test.cjs`。 |
 | `UI-09` GitHub 点星入口 | 打开 **关于素笺**，用鼠标或 `Enter` 激活左下角 **在 GitHub 上点星**，核对系统浏览器的目标，返回后仍可操作原窗口。 | Windows Electron 实测鼠标与键盘入口，并核对浏览器桥接收到的项目主页地址。复测 `check-review-workflows-desktop.mjs`。 |
 | `UI-10` 安装已下载的更新 | 仅在校验成功后显示 **安装更新**。修改已有文档并新建未命名文档，再打开第二个有改动的窗口。依次验证取消安装、取消另存、复验失败及保存后启动。 | Windows Electron 以拦截的系统启动调用为观察点，确认两个窗口的三份文档已实际写入磁盘后才发起安装并安排退出。取消提示、取消另存和同大小篡改安装包均通过。各平台安装包格式与启动交接另有单元测试。见 `check-updates-desktop.mjs`、`electron/updates.test.cjs`。 |
+| `UI-11` 经代理检查与下载更新 | 给隔离的素笺测试窗口配置 HTTP CONNECT 代理，从 **关于素笺** 检查更新并下载安装包。代理应收到 GitHub API、发布下载地址和 CDN 的连接，安装包应通过原有的 SHA-256 校验。 | Windows Electron 实测经代理访问三类目标、处理 HTTPS 302、写入通过校验的安装包，并逐字节核对。使用本机系统代理也读取了 GitHub 的真实发布信息。独立复测 `node scripts/check-update-proxy-desktop.mjs`，需要 OpenSSL 生成测试证书。 |
 
 ## 审阅、工作流与交付
 

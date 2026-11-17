@@ -65,7 +65,7 @@ async function request(fetchImpl, url, { signal, headers, allowRedirect = false 
       response = await fetchImpl(address, { signal, headers, cache: 'no-store', credentials: 'omit', redirect: 'manual' });
     } catch (error) {
       signal.throwIfAborted();
-      throw new Error('无法连接 GitHub，请检查网络后重试。', { cause: error });
+      throw new Error('无法连接 GitHub，请检查网络或系统代理后重试。', { cause: error });
     }
     if (!redirects.has(response.status)) {
       if (response.ok) return response;
@@ -128,8 +128,8 @@ function downloadSignal(signal) {
   let timeout;
   const bump = () => {
     clearTimeout(timeout);
+    // Keep the deadline active while the Chromium request waits for more data.
     timeout = setTimeout(() => idle.abort(new Error('下载长时间没有响应，请重试。')), 45_000);
-    timeout.unref();
   };
   bump();
   return { signal: signal ? AbortSignal.any([signal, idle.signal]) : idle.signal, bump, stop: () => clearTimeout(timeout) };
@@ -212,8 +212,9 @@ function createUpdater({ currentVersion, platform = process.platform, arch = pro
 
   return {
     async check({ signal } = {}) {
-      const timeout = AbortSignal.timeout(15_000);
-      const lookup = signal ? AbortSignal.any([signal, timeout]) : timeout;
+      const timeout = new AbortController();
+      const deadline = setTimeout(() => timeout.abort(), 15_000);
+      const lookup = signal ? AbortSignal.any([signal, timeout.signal]) : timeout.signal;
       try {
         const response = await request(fetchImpl, latestUrl, { signal: lookup, headers: { Accept: 'application/vnd.github+json' } });
         const body = await readLimited(response, maximumMetadata);
@@ -244,8 +245,10 @@ function createUpdater({ currentVersion, platform = process.platform, arch = pro
         };
       } catch (error) {
         signal?.throwIfAborted();
-        if (timeout.aborted) throw new Error('检查更新超时，请稍后重试。');
+        if (timeout.signal.aborted) throw new Error('检查更新超时，请稍后重试。');
         throw error;
+      } finally {
+        clearTimeout(deadline);
       }
     },
     async download({ assetName, directory, signal, onProgress }) {

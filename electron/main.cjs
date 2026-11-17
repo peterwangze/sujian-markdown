@@ -14,6 +14,7 @@ const { commitGitWorkspace, initGitWorkspace, inspectGitWorkspace } = require('.
 const { listGitDocumentHistory, readGitDocumentRevision } = require('./git-document-history.cjs');
 const { createStorage } = require('./storage.cjs');
 const { prepareUpdateInstall, openPreparedUpdate } = require('./update-install.cjs');
+const { createUpdateTransport } = require('./update-transport.cjs');
 const { createUpdater } = require('./updates.cjs');
 const { createWatcher } = require('./watcher.cjs');
 const { findDocuments, listDirectory, searchDirectory } = require('./workspace.cjs');
@@ -387,7 +388,7 @@ function installIpc({ assets, conversion, fonts, storage, operations }) {
       const arch = app.runningUnderARM64Translation ? 'arm64' : process.arch;
       state.updater ??= createUpdater({
         currentVersion: app.getVersion(), arch,
-        fetchImpl: (url, options) => globalThis.fetch(url, options),
+        fetchImpl: createUpdateTransport(options => net.request({ ...options, session: session.defaultSession })),
       });
       return { ...await state.updater.check({ signal: task.signal }), platform: process.platform, arch };
     } catch (error) {
