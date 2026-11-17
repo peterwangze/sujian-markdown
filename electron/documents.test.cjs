@@ -94,6 +94,35 @@ test('workspace search handles Unicode whole words, skips binary files and can b
   assert.equal(canceled.cancelled, true);
 });
 
+test('workspace search counts each occurrence and highlights the visible parts of matching lines', async (t) => {
+  const folder = await workspace(t);
+  const line = '前🧪' + 'x'.repeat(74) + 'cat CAT' + ' '.repeat(140) + 'cat';
+  await fs.writeFile(path.join(folder, 'notes.md'), line + '\nAnother cat.');
+  const result = await searchDirectory({ path: folder, query: 'cat' });
+  assert.equal(result.occurrences, 4);
+  assert.deepEqual(result.matches.map(({ line, column, occurrences }) => [line, column, occurrences]), [[1, 78, 3], [2, 9, 1]]);
+  const first = result.matches[0];
+  assert.ok(first.text.startsWith('…🧪'));
+  assert.ok(first.text.endsWith('…'));
+  assert.deepEqual(first.highlights.map(({ from, to }) => first.text.slice(from, to)), ['cat', 'CAT']);
+
+  const empty = await searchDirectory({ path: folder, query: '(?=cat)', regex: true });
+  assert.equal(empty.occurrences, 4);
+  assert.equal(empty.matches.length, 2);
+  assert.ok(empty.matches.every(match => !match.highlights.length));
+});
+
+test('workspace search reports the existing 500-row display limit separately from occurrences', async (t) => {
+  const folder = await workspace(t);
+  const file = path.join(folder, 'notes.md');
+  await fs.writeFile(file, 'needle needle\n'.repeat(500));
+  const full = await searchDirectory({ path: folder, query: 'needle' });
+  assert.deepEqual([full.matches.length, full.occurrences, full.truncated], [500, 1000, false]);
+  await fs.appendFile(file, 'another needle');
+  const partial = await searchDirectory({ path: folder, query: 'needle' });
+  assert.deepEqual([partial.matches.length, partial.occurrences, partial.truncated], [500, 1000, true]);
+});
+
 test('file watcher detects an external replacement with the newest disk contents', { timeout: 6000 }, async (t) => {
   const file = path.join(await workspace(t), 'watched.md');
   await fs.writeFile(file, 'before');

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rename, unlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -9,15 +9,19 @@ import { waitForCheck } from './desktop-checks.mjs'
 const project = path.resolve(fileURLToPath(new URL('../', import.meta.url)))
 const working = await mkdtemp(path.join(tmpdir(), 'sujian-sidebar-tree-'))
 const workspace = path.join(working, '项目资料')
+const pinnedWorkspace = path.join(working, '固定资料')
+const pinnedNote = '固定索引.md'
 const folders = ['设计', '界面', '评审记录', '发布清单', '第一轮', '修改版', '归档']
 const notes = ['索引.md', '设计说明.md', '界面稿.md', '验收笔记.md', '复核.md', '记录.md', '修订.md', '一份很长的发布说明.md']
 const paths = [workspace]
 for (const folder of folders) paths.push(path.join(paths.at(-1), folder))
 const profile = path.join(working, 'profile')
-await mkdir(profile)
-await mkdir(paths.at(-1), { recursive: true })
+await Promise.all([mkdir(profile), mkdir(paths.at(-1), { recursive: true }), mkdir(pinnedWorkspace)])
 await Promise.all([
-  writeFile(path.join(profile, 'preferences.json'), JSON.stringify({ workspace, sidebar: true, mode: 'source' })),
+  writeFile(path.join(profile, 'preferences.json'), JSON.stringify({
+    workspace, pinned: [workspace, pinnedWorkspace], sidebar: true, mode: 'source',
+  })),
+  writeFile(path.join(pinnedWorkspace, pinnedNote), '# 固定资料索引\n'),
   ...paths.map((folder, index) => writeFile(path.join(folder, notes[index]), `# ${notes[index]}\n`)),
 ])
 
@@ -42,6 +46,29 @@ async function positions(row) {
       overflow: getComputedStyle(label).textOverflow,
     }
   })
+}
+
+async function checkExternalFileChanges(directory, prefix, level) {
+  const createdName = prefix + '新增.md'
+  const renamedName = prefix + '改名.md'
+  const createdPath = path.join(directory, createdName)
+  const renamedPath = path.join(directory, renamedName)
+  const created = treeRow(createdName)
+  const renamed = treeRow(renamedName)
+
+  await writeFile(createdPath, '# 在编辑器外创建\n')
+  await created.waitFor()
+  assert.equal(await created.getAttribute('data-level'), String(level))
+  assert.equal(await created.getAttribute('title'), createdPath)
+
+  await rename(createdPath, renamedPath)
+  await renamed.waitFor()
+  await created.waitFor({ state: 'detached' })
+  assert.equal(await renamed.getAttribute('data-level'), String(level))
+  assert.equal(await renamed.getAttribute('title'), renamedPath)
+
+  await unlink(renamedPath)
+  await renamed.waitFor({ state: 'detached' })
 }
 
 try {
@@ -82,6 +109,17 @@ try {
     } })
   }
 
+  await displayed.focus()
+  await checkExternalFileChanges(workspace, '工作区外部', 1)
+  await checkExternalFileChanges(paths[4], '展开目录外部', 5)
+  for (const name of [path.basename(workspace), ...folders.slice(0, 4)]) {
+    assert.equal(await treeRow(name).getAttribute('aria-expanded'), 'true')
+  }
+  assert.equal(await displayed.getAttribute('aria-current'), 'true')
+  assert.equal(await displayed.evaluate(element => element === document.activeElement), true)
+  assert.equal(await tab(notes[4]).getAttribute('aria-selected'), 'true')
+  console.log('External file creation, rename and deletion refreshed the workspace root and expanded directories, retaining expansion, focus and the current document.')
+
   await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(850, 800))
   await page.waitForFunction(() => window.innerWidth <= 960)
   for (const name of folders.slice(4)) await treeRow(name).press('ArrowRight')
@@ -105,7 +143,35 @@ try {
   const flatDeepest = await positions(treeRow(notes.at(-1)))
   assert.equal(flatRoot.icon, flatDeepest.icon)
   assert.equal(flatRoot.label, flatDeepest.label)
+  assert.equal(await treeRow(folders[0]).count(), 0)
   console.log('Nested sidebar icons and labels align across sibling types and indent per level. Narrow layout, focus, context menu and flat list passed.')
+
+  await checkExternalFileChanges(paths.at(-1), '文件列表外部', 1)
+  assert.equal(await tab(notes.at(-1)).getAttribute('aria-selected'), 'true')
+  console.log('Flat mode observes changes in deep folders without expanding folder branches.')
+
+  await sidebar.getByRole('button', { name: '切换文件树', exact: true }).click()
+  const pinned = sidebar.locator('.sidebar-section').filter({
+    has: page.getByRole('heading', { name: '固定文件夹', exact: true }),
+  })
+  await pinned.getByRole('button', { name: path.basename(pinnedWorkspace), exact: true }).click()
+  await treeRow(pinnedNote).click()
+  await tab(pinnedNote).waitFor()
+  const oldWorkspaceNote = '切换之后在原目录创建.md'
+  const oldWorkspacePath = path.join(workspace, oldWorkspaceNote)
+  await writeFile(oldWorkspacePath, '# 在切换后写入原工作区\n')
+  await checkExternalFileChanges(pinnedWorkspace, '固定目录外部', 1)
+  assert.equal(await treeRow(oldWorkspaceNote).count(), 0)
+  assert.equal(await treeRow(path.basename(pinnedWorkspace)).getAttribute('aria-expanded'), 'true')
+  assert.equal(await treeRow(pinnedNote).getAttribute('aria-current'), 'true')
+  assert.equal(await tab(pinnedNote).getAttribute('aria-selected'), 'true')
+
+  await pinned.getByRole('button', { name: path.basename(workspace), exact: true }).click()
+  await treeRow(oldWorkspaceNote).waitFor()
+  await treeRow(pinnedNote).waitFor({ state: 'detached' })
+  await unlink(oldWorkspacePath)
+  await treeRow(oldWorkspaceNote).waitFor({ state: 'detached' })
+  console.log('Pinned workspace switching preserves current rows, isolates former-workspace events, and resumes updates when reopening the root.')
 } finally {
   await app.close()
 }

@@ -67,6 +67,7 @@ contextBridge.exposeInMainWorld('sujian', {
   undoFileOperation: invoke('undo-file-operation'),
   saveFile: invoke('save-file'),
   setWatchedFiles: invoke('set-watched-files'),
+  setWatchedDirectories: invoke('set-watched-directories'),
   loadDrafts: invoke('load-drafts'),
   saveDraft: invoke('save-draft'),
   deleteDraft: invoke('delete-draft'),
@@ -111,6 +112,7 @@ contextBridge.exposeInMainWorld('sujian', {
   onBeforeClose,
   onMenuAction: subscribe('menu-action'),
   onExternalChange: subscribe('external-change'),
+  onDirectoryChange: subscribe('directory-change'),
   onOpenFiles: subscribe('open-files'),
   onCommand: subscribe('command'),
 });

@@ -88,6 +88,7 @@ async function fontProperties(family) {
 
 try {
   await launch();
+  await page.waitForFunction(() => document.querySelector('.application')?.style.getPropertyValue('--document-width') === '1160px');
   await mockOpenDialog([working]);
   await button(page, '打开文件夹').click();
   const treeRows = page.locator('.sidebar-content button[data-level="1"]');
@@ -116,13 +117,16 @@ try {
   await page.emulateMedia({ colorScheme: 'light' });
   await theme('paper', 'light');
   await button(dialog, '雾蓝').click();
-  await dialog.getByLabel('文档宽度').press('End');
+  const documentWidth = dialog.getByLabel('文档宽度');
+  assert.equal(await documentWidth.inputValue(), await documentWidth.getAttribute('max'));
+  await documentWidth.press('ArrowLeft');
+  await page.waitForFunction(() => document.querySelector('.application')?.style.getPropertyValue('--document-width') === '1150px');
   await dialog.getByText('自定义主题 CSS', { exact: true }).click();
   await dialog.getByLabel('样式表').fill(':root { --sujian-qa-theme: typed; }');
   await page.waitForFunction(() => getComputedStyle(document.documentElement).getPropertyValue('--sujian-qa-theme').trim() === 'typed');
   await dialog.locator('input[type=file]').setInputFiles({ name: '主题.css', mimeType: 'text/css', buffer: Buffer.from(css) });
   await page.waitForFunction(() => getComputedStyle(document.documentElement).getPropertyValue('--sujian-qa-theme').trim() === 'imported');
-  await preference({ theme: 'mist', width: 1160, customCss: css });
+  await preference({ theme: 'mist', width: 1150, customCss: css });
 
   await button(dialog, '字体').click();
   for (const [index, role] of fontRoles.entries()) {
@@ -189,7 +193,7 @@ try {
   const [, imageName] = copiedImage.exec(await readFile(fixture, 'utf8'));
   assert.deepEqual(await readFile(path.join(working, 'attachments', imageName)), imageBytes);
 
-  const saved = { theme: 'mist', mode: 'source', width: 1160, fontSize: 28, lineHeight: 2.2, customCss: css,
+  const saved = { theme: 'mist', mode: 'source', width: 1150, fontSize: 28, lineHeight: 2.2, customCss: css,
     bodyFont: importedValue, sourceFont: importedValue, uiFont: importedValue, sidebar: false, focusMode: true,
     typewriter: true, wrap: false, autoSave: true, resume: true, showHidden: true, imageFolder: 'attachments' };
   await preference(saved);

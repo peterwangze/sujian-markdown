@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { ChevronDown, ChevronRight, FileText, Folder, FolderOpen, List, FolderSearch, RotateCcw, Pin, FolderPlus, MoreHorizontal, ArrowUpDown } from 'lucide-react'
 import { desktop, native } from '../workspace/desktop.js'
 import { isComposingKey } from '../workspace/commands.js'
@@ -35,24 +35,48 @@ function navigateRows(event) {
   next?.focus()
 }
 
-function FileTree({ path, level, expanded, settings, refresh, folderToExpand, active, onOpen, onContext, notify }) {
+function FileTree({ path, level, expanded, settings, refresh, watchDirectory, folderToExpand, active, onOpen, onContext, notify }) {
   const [nodes, setNodes] = useState(null)
   const [error, setError] = useState('')
   const [children, setChildren] = useState({})
   const expandedRequest = useRef(null)
+  const flat = settings.fileList && level === 0
+  const watchContentChanges = !flat && settings.fileSort === 'recent'
   useEffect(() => {
+    if (!expanded) return
     let current = true
-    setError('')
-    const request = settings.fileList && level === 0
-      ? desktop.findDocuments(path, { showHidden: settings.showHidden, limit: 2500 })
-      : desktop.listDirectory(path, { showHidden: settings.showHidden })
-    Promise.resolve(request).then(result => {
-      if (!current) return
-      const files = Array.isArray(result) ? result : result.files ?? result.documents ?? []
-      setNodes(files.map(file => typeof file === 'string' ? { path: file, name: pathTail(file), kind: 'file' } : file))
-    }).catch(failure => { if (current) setError(failure.message) })
-    return () => { current = false }
-  }, [path, level, refresh, settings.fileList, settings.showHidden])
+    let reading = false
+    let changedDuringRead = false
+    const showHidden = settings.showHidden
+    async function read() {
+      if (reading) {
+        changedDuringRead = true
+        return
+      }
+      reading = true
+      do {
+        changedDuringRead = false
+        try {
+          const result = flat
+            ? await desktop.findDocuments(path, { showHidden, limit: 2500 })
+            : await desktop.listDirectory(path, { showHidden })
+          if (!current) return
+          const files = Array.isArray(result) ? result : result.files ?? result.documents ?? []
+          setNodes(files.map(file => typeof file === 'string' ? { path: file, name: pathTail(file), kind: 'file' } : file))
+          setError('')
+        } catch (failure) {
+          if (current) setError(failure.message)
+        }
+      } while (current && changedDuringRead)
+      reading = false
+    }
+    const unwatch = watchDirectory({ path, recursive: flat, showHidden, watchContentChanges }, read)
+    void read()
+    return () => {
+      current = false
+      unwatch?.()
+    }
+  }, [path, expanded, refresh, flat, settings.showHidden, watchContentChanges, watchDirectory])
   useEffect(() => {
     const target = folderToExpand?.path
     if (target && expandedRequest.current !== folderToExpand &&
@@ -84,7 +108,8 @@ function FileTree({ path, level, expanded, settings, refresh, folderToExpand, ac
         {directory ? <Folder size={16}/> : <FileText size={16}/>}<span>{item.name}</span>
       </button>
       {directory && open && <FileTree path={item.path} level={level + 1} expanded={open} settings={settings}
-        refresh={refresh} folderToExpand={folderToExpand} active={active} onOpen={onOpen} onContext={onContext} notify={notify}/>}
+        refresh={refresh} watchDirectory={watchDirectory} folderToExpand={folderToExpand} active={active}
+        onOpen={onOpen} onContext={onContext} notify={notify}/>}
     </div>
   })
 }
@@ -94,6 +119,31 @@ export function Sidebar({ workspace, sidebar, setSidebar, outline, jump, openFol
   const { active, docs, settings, configure, recoverable } = workspace
   const [rootOpen, setRootOpen] = useState(true)
   const [collapsed, setCollapsed] = useState(new Set())
+  const directorySubscriptions = useRef(new Map())
+  const directorySyncScheduled = useRef(false)
+  const syncDirectorySubscriptions = useCallback(() => {
+    if (directorySyncScheduled.current) return
+    directorySyncScheduled.current = true
+    queueMicrotask(() => {
+      directorySyncScheduled.current = false
+      void desktop.setWatchedDirectories([...directorySubscriptions.current.keys()]).catch(() => {})
+    })
+  }, [])
+  const watchDirectory = useCallback((options, read) => {
+    if (!desktop.setWatchedDirectories) return
+    directorySubscriptions.current.set(options, read)
+    syncDirectorySubscriptions()
+    return () => {
+      directorySubscriptions.current.delete(options)
+      syncDirectorySubscriptions()
+    }
+  }, [syncDirectorySubscriptions])
+  useLayoutEffect(() => desktop.onDirectoryChange?.(({ paths }) => {
+    const changed = new Set(paths)
+    for (const [options, read] of directorySubscriptions.current) {
+      if (changed.has(options.path)) void read()
+    }
+  }), [])
   useEffect(() => { setRootOpen(true) }, [settings.workspace])
   useEffect(() => { if (folderToExpand?.path === settings.workspace) setRootOpen(true) }, [folderToExpand, settings.workspace])
   useEffect(() => { setCollapsed(new Set()) }, [active?.id])
@@ -141,8 +191,9 @@ export function Sidebar({ workspace, sidebar, setSidebar, outline, jump, openFol
             <IconButton icon={FolderSearch} label="在工作区内搜索" onClick={searchFolder}/>
           </>}
         </div>
-        {settings.workspace ? <FileTree path={settings.workspace} level={0} expanded={rootOpen} settings={settings}
-          refresh={refresh} folderToExpand={folderToExpand} active={active} onOpen={onOpenPath} onContext={onContext} notify={notify}/> :
+        {settings.workspace ? <FileTree key={settings.workspace} path={settings.workspace} level={0} expanded={rootOpen} settings={settings}
+          refresh={refresh} watchDirectory={watchDirectory} folderToExpand={folderToExpand} active={active}
+          onOpen={onOpenPath} onContext={onContext} notify={notify}/> :
           rootOpen && docs.map(doc => <button key={doc.id} className={'tree-row ' + (doc.id === active?.id ? 'selected' : '')}
             data-sidebar-row data-level="1" aria-current={doc.id === active?.id ? 'true' : undefined}
             style={{ '--indent': 1 }} onClick={() => onSelectDocument(doc.id)} title={doc.path || doc.name}

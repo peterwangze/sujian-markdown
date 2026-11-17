@@ -77,7 +77,14 @@ export default function App() {
   const reviewRequest = useRef(null)
   const [commandQueue, setCommandQueue] = useState([])
   const [findState, setFindState] = useState(null)
+  const [findResult, setFindResult] = useState(null)
   const findControl = useRef(null)
+  const findDocument = useCallback((query, options) => editor.current?.find(query, options), [])
+  const closeDocumentFind = useCallback(() => {
+    editor.current?.find('')
+    setFindState(null)
+    editor.current?.focus()
+  }, [])
   const [selection, setSelection] = useState('')
   const [refresh, setRefresh] = useState(0)
   const [folderToExpand, setFolderToExpand] = useState(null)
@@ -638,6 +645,11 @@ export default function App() {
   useEffect(() => {
     function shortcut(event) {
       if (!event.isTrusted || isComposingKey(event) || modalOpen || event.defaultPrevented) return
+      if (event.key === 'Escape' && findControl.current && !event.target?.closest?.('.find-bar')) {
+        event.preventDefault()
+        findControl.current.close()
+        return
+      }
       if (!event.repeat && event.key === 'F3' && !event.ctrlKey && !event.metaKey && !event.altKey && findControl.current) {
         event.preventDefault()
         findControl.current.next(event.shiftKey)
@@ -852,8 +864,9 @@ export default function App() {
           <Toolbar active={active} mode={mode} setMode={setMode} action={action} command={command} settings={settings} native={native} platform={desktop.platform}
             canUndoReview={canUndoReview}/>
         </div>
-        {findState && active && <FindBar key={findState.id} initial={findState} controlRef={findControl} close={() => { setFindState(null); editor.current?.focus() }}
-          find={(query, options) => editor.current?.find(query, options)} replace={(query, value, options) => editor.current?.replace(query, value, options) ?? 0}/>}
+        {findState && active && <FindBar key={findState.id} initial={findState} controlRef={findControl} close={closeDocumentFind}
+          result={findResult} canReplace={mode !== 'read'} find={findDocument}
+          replace={(query, value, options) => editor.current?.replace(query, value, options) ?? 0}/>}
         {active?.conflict && <div className="conflict" role="status">
           <AlertTriangle size={16}/><span>{active.conflict.document ? '磁盘上的文件已更改' : '磁盘上的文件已移动或删除'}</span>
           <button onClick={() => setDialog({ type: 'conflict' })}>处理冲突 <ChevronDown size={13}/></button>
@@ -863,7 +876,7 @@ export default function App() {
           <div id="write" className="editor-frame" role="tabpanel" aria-labelledby={'doc-tab-' + active.id}>
             <Editor docId={active.id} value={active.text} mode={mode} editorRef={editor}
               onChange={text => amend(active.id, { text })} onSelection={setSelection} onLink={followLink} onImage={insertImages}
-              onContextMenu={openEditorContext}
+              onContextMenu={openEditorContext} onFindResult={setFindResult}
               assetUrl={assetUrl} resolveImage={resolveImage} embedImage={embeddedImage} theme={renderTheme}
               documentPath={active.path} imageFolder={settings.imageFolder}
               wrap={settings.wrap} allowRemoteMedia={settings.remoteMedia}
@@ -937,7 +950,12 @@ export default function App() {
       requestAnimationFrame(() => { if (doc?.id === activeId.current) jumpToSource(line, doc) })
     }}/>}
     {dialog?.type === 'search-folder' && <FolderSearch path={settings.workspace} close={closeDialog} notify={notify}
-      jump={(path, line) => run(async () => { flushEditor(); const next = await workspace.openPath(path); jump(line, next); closeDialog() })}/>}
+      jump={(path, line) => run(async () => {
+        flushEditor()
+        const next = await workspace.openPath(path)
+        closeDialog()
+        requestAnimationFrame(() => { if (next?.id === activeId.current) editor.current?.jump(line) })
+      })}/>}
     {dialog?.type === 'export' && active && <ExportDialog name={active.name} close={closeDialog} run={exportFile}/>}
     {dialog?.type === 'upload-images' && active && <Modal title="上传本地图片" onClose={closeDialog}>
       <p className="modal-detail">将使用设置中的程序上传 {dialog.sources.length} 张图片，并替换文档中的图片地址。</p>

@@ -7,14 +7,24 @@ import { IconButton, Modal } from './Controls.jsx'
 import { FontSettings, ThemeSettings } from './AppearanceSettings.jsx'
 import { ShortcutSettings } from './ShortcutSettings.jsx'
 
-export function FindBar({ initial, close, find, replace, controlRef }) {
+export function FindBar({ initial, close, find, replace, result, canReplace, controlRef }) {
   const [query, setQuery] = useState(initial.query ?? '')
   const [replacement, setReplacement] = useState('')
   const [showReplace, setShowReplace] = useState(initial.replace)
   const [flags, setFlags] = useState({ caseSensitive: false, wholeWord: false, regex: false })
   const [message, setMessage] = useState('')
+  const [composing, setComposing] = useState(false)
   const input = useRef(null)
   useEffect(() => { input.current.focus(); input.current.select() }, [])
+  useEffect(() => {
+    if (composing) return
+    if (!query || !flags.regex) {
+      find(query, { ...flags, initialize: true })
+      return
+    }
+    const timer = setTimeout(() => find(query, { ...flags, initialize: true }), 160)
+    return () => clearTimeout(timer)
+  }, [query, flags, find, composing])
   useImperativeHandle(controlRef, () => ({
     open(replacing) {
       if (replacing) setShowReplace(true)
@@ -22,12 +32,12 @@ export function FindBar({ initial, close, find, replace, controlRef }) {
       input.current.select()
     },
     next: run,
+    close,
   }))
   function run(backward = false) {
     try {
-      const match = query && find(query, { ...flags, backward })
-      setMessage(match ? match.index + ' / ' + match.count : '无匹配')
-      input.current.focus({ preventScroll: true })
+      if (query && !composing) find(query, { ...flags, backward })
+      setMessage('')
     } catch (error) { setMessage(error.message) }
   }
   function replaceMatches(all) {
@@ -37,7 +47,10 @@ export function FindBar({ initial, close, find, replace, controlRef }) {
     } catch (error) { setMessage(error.message) }
   }
   return <section className="find-bar" aria-label="查找和替换" onKeyDown={event => {
-    if (event.key === 'Escape' && !isComposingKey(event.nativeEvent)) close()
+    if (event.key === 'Escape' && !isComposingKey(event.nativeEvent)) {
+      event.preventDefault()
+      close()
+    }
   }}>
     <form onSubmit={event => { event.preventDefault(); run() }}>
       <Search size={17}/><input ref={input} aria-label="查找文字" placeholder="在本文档中查找" value={query}
@@ -46,22 +59,25 @@ export function FindBar({ initial, close, find, replace, controlRef }) {
           event.preventDefault()
           run(event.shiftKey)
         }}
+        onCompositionStart={() => setComposing(true)} onCompositionEnd={() => setComposing(false)}
         onChange={event => { setQuery(event.target.value); setMessage('') }}/>
-      <span className="match-count" aria-live="polite">{message}</span>
-      <IconButton icon={ArrowUp} label="上一个匹配" title="上一个匹配（Shift+F3）" onClick={() => run(true)}/>
-      <IconButton icon={ArrowDown} label="下一个匹配" title="下一个匹配（F3）" onClick={() => run()}/>
-      <button className="small-button" type="button" onClick={() => setShowReplace(!showReplace)}>替换</button>
+      {query && <IconButton icon={X} label="清空查找" onClick={() => { setQuery(''); setMessage(''); input.current.focus() }}/>}
+      <span className="match-count" role="status">{query && (result?.error ?? (result?.pending ? '正在查找…' : result?.count ? `${result.index} / ${result.count}` : '无匹配'))}</span>
+      <IconButton icon={ArrowUp} label="上一个匹配" title="上一个匹配（Shift+F3）" disabled={!result?.count} onClick={() => run(true)}/>
+      <IconButton icon={ArrowDown} label="下一个匹配" title="下一个匹配（F3）" disabled={!result?.count} onClick={() => run()}/>
+      {canReplace && <button className="small-button" type="button" aria-expanded={showReplace} onClick={() => setShowReplace(!showReplace)}>替换</button>}
       <IconButton icon={X} label="关闭查找" onClick={close}/>
     </form>
     <div className="find-options">
       {[['caseSensitive','区分大小写'], ['wholeWord','全词'], ['regex','正则表达式']].map(([key, label]) =>
         <label key={key}><input type="checkbox" checked={flags[key]} onChange={event => setFlags({ ...flags, [key]: event.target.checked })}/>{label}</label>)}
     </div>
-    {showReplace && <form onSubmit={event => { event.preventDefault(); replaceMatches(false) }}>
+    {canReplace && showReplace && <form onSubmit={event => { event.preventDefault(); replaceMatches(false) }}>
       <input aria-label="替换为" placeholder="替换为…" value={replacement} onChange={event => setReplacement(event.target.value)}/>
-      <button className="small-button" type="submit">替换一处</button>
-      <button className="small-button" type="button" onClick={() => replaceMatches(true)}>全部替换</button>
+      <button className="small-button" type="submit" disabled={!result?.count}>替换一处</button>
+      <button className="small-button" type="button" disabled={!result?.count} onClick={() => replaceMatches(true)}>全部替换</button>
     </form>}
+    {message && <p className="find-message" role="status">{message}</p>}
   </section>
 }
 
@@ -141,6 +157,16 @@ export function GoToLine({ text, onClose, onJump }) {
   </Modal>
 }
 
+function WorkspaceSearchSnippet({ text, highlights }) {
+  const parts = []
+  let offset = 0
+  for (const { from, to } of highlights) {
+    parts.push(text.slice(offset, from), <mark className="editor-find-match" key={from}>{text.slice(from, to)}</mark>)
+    offset = to
+  }
+  return <small style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{parts}{text.slice(offset)}</small>
+}
+
 export function FolderSearch({ path, close, jump, notify }) {
   const [query, setQuery] = useState('')
   const [flags, setFlags] = useState({ caseSensitive: false, wholeWord: false, regex: false })
@@ -152,10 +178,11 @@ export function FolderSearch({ path, close, jump, notify }) {
     event.preventDefault()
     if (!query.trim() || !path) return
     const sequence = ++request.current
+    setResult(null)
     setBusy(true)
     try {
       const next = await desktop.searchDirectory({ path, query, ...flags })
-      if (sequence === request.current) setResult(next)
+      if (sequence === request.current && !next.cancelled) setResult(next)
     } catch (error) {
       if (sequence === request.current) notify(error.message, true)
     } finally {
@@ -171,10 +198,15 @@ export function FolderSearch({ path, close, jump, notify }) {
     </form>
     <div className="search-results">
       {!path && <p className="sidebar-note">请先打开一个文件夹。</p>}
-      {busy && <p className="sidebar-note">正在搜索…</p>}
-      {result && <p className="sidebar-note">{result.matches.length} 处匹配{result.truncated && '（已达到显示上限）'}</p>}
-      {result?.matches.map(({ path: file, name, line, column, text }, index) =>
-        <button key={index} onClick={() => jump(file, line)} title={file}><FileText size={15}/><span>{name} · 第 {line} 行，第 {column} 列<small>{text}</small></span></button>)}
+      {busy && <p className="sidebar-note" role="status">正在搜索…</p>}
+      {result && <p className="sidebar-note" role="status">{result.truncated
+        ? `已达到显示上限，列出前 ${result.matches.length} 行的 ${result.occurrences} 处匹配。`
+        : `${result.occurrences} 处匹配 · ${result.matches.length} 行`}</p>}
+      {result?.matches.map(({ path: file, name, line, column, text, highlights, occurrences }) =>
+        <button type="button" key={file + ':' + line} onClick={() => jump(file, line)} title={file}>
+          <FileText size={15}/><span>{name} · 第 {line} 行，第 {column} 列{occurrences > 1 && ` · ${occurrences} 处`}
+            <WorkspaceSearchSnippet text={text} highlights={highlights}/></span>
+        </button>)}
     </div>
   </Modal>
 }

@@ -189,6 +189,7 @@ a { color: var(--accent-ink); }
 .find-options { flex-wrap: wrap; margin-top: 5px; font-size: 11px; }
 .find-options label { display: inline-flex; align-items: center; gap: 3px; }
 .match-count { min-width: 40px; text-align: center; }
+.find-message { margin: 5px 0 0; }
 .conflict { color: var(--accent-ink); }
 .conflict button { display: flex; align-items: center; gap: 5px; margin-left: auto; color: var(--accent-ink); font-weight: 600; }
 .large-note button { color: var(--accent-ink); text-decoration: underline; }

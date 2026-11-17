@@ -14,6 +14,7 @@ import { displayedImageKey, findImageReference, imageReferenceReplacement, image
 import { changeFenceLanguage, CodeLanguageControl, codeFenceAt, codeFenceLanguage, codeFenceSource, focusCodeFence, liveFenceHistorySources, normalizeLiveFencePreviews } from './CodeLanguageControl.jsx';
 import { contextSelection, domContext, linkAddress, restoreEditorContext, sourceContext, sourceSpellingAt, spellingAt } from './editor-context.js';
 import { completeFenceHeaders, replaceFenceLanguage, structuredFenceSources } from './fence-info.js';
+import { findTextRange, setRenderedSearchMatches, setSourceSearchMatches, sourceFindHighlights } from './find-highlights.js';
 import { formatMarkdown } from './format.js';
 import { createLiveHtmlDetails } from './live-html-details.js';
 import { decorateLiveInlineHtml } from './live-html-inline.js';
@@ -21,7 +22,7 @@ import { decorateLiveSpellcheck } from './live-spellcheck.js';
 import { imageTransfer } from './image-paste.js';
 import { formatLiveSelection } from './live-inline-format.js';
 import { openEnclosingDetails, scrollToMarkdownAnchor } from './markdown-anchors.js';
-import { matchMarkdown, projectMarkdownEdit, replacementText } from './markdown-edits.js';
+import { matchMarkdown, markdownSearchPattern, projectMarkdownEdit, replacementText } from './markdown-edits.js';
 import { handleRichCodeKeys } from './rich-code-keys.js';
 import { handleRichListKeys, handleRichListTrigger } from './rich-list-keys.js';
 import { handleRichHardBreak, handleRichParagraphKeys } from './rich-paragraph-keys.js';
@@ -74,7 +75,7 @@ function sourceSpellcheckSetting(enabled) {
 function sourceExtensions(onUpdate, latest, wrapping, spellcheck) {
   return [
     markdown({ addKeymap: false }), sourceKeys, syntaxHighlighting(sourceSyntax), sourceAppearance,
-    history(), drawSelection(), dropCursor(), highlightActiveLine(),
+    history(), drawSelection(), dropCursor(), highlightActiveLine(), sourceFindHighlights,
     wrapping.of(latest.current.wrap ? EditorView.lineWrapping : []),
     spellcheck.of(sourceSpellcheckSetting(latest.current.spellcheck)),
     keymap.of([...defaultKeymap, ...historyKeymap]),
@@ -150,8 +151,9 @@ function visibleText(editor) {
 
   while ((node = walker.nextNode())) {
     const element = node.parentElement;
-    if (element.closest('.vditor-ir__marker, .vditor-ir__preview, .vditor-copy, [contenteditable="false"], style, svg, .katex-mathml')) continue;
-    const block = element.closest('p, h1, h2, h3, h4, h5, h6, li, td, th, pre');
+    if (!node.length || element.closest('.vditor-ir__marker, .vditor-ir__preview, .vditor-copy, [contenteditable="false"], [hidden], style, svg, .katex-mathml')) continue;
+    const block = element.closest('p, h1, h2, h3, h4, h5, h6, li, td, th, pre, summary, blockquote') ?? element.closest('div');
+    if ((element === editor || !block) && !node.data.trim()) continue;
     if (lastBlock && block !== lastBlock) text += '\n';
     lastBlock = block;
     ranges.push({ node, from: text.length, to: text.length + node.length });
@@ -182,6 +184,18 @@ function selectRich(editor, ranges, from, to, reveal) {
 function sourceSelection(view, from, to = from) {
   view.dispatch({ selection: EditorSelection.single(from, to), scrollIntoView: true });
   view.focus();
+}
+
+function revealSearchRange(root, range, reveal) {
+  const element = range.startContainer.parentElement;
+  openEnclosingDetails(element, reveal);
+  const scroller = root.closest('.editor-preview') ?? root;
+  const bounds = scroller.getBoundingClientRect();
+  const match = range.getClientRects()[0];
+  if (!match) return element.scrollIntoView({ block: 'nearest' });
+  const top = match.top < bounds.top || match.bottom > bounds.bottom ? match.top - bounds.top - bounds.height / 2 : 0;
+  const left = match.left < bounds.left || match.right > bounds.right ? match.left - bounds.left - bounds.width / 2 : 0;
+  if (top || left) scroller.scrollBy({ top, left });
 }
 
 function nextMatch(matches, offset, backward) {
@@ -241,7 +255,7 @@ function ensureLinkCaret(root, remembered) {
 export function Editor({
   docId, value = '', mode = 'live', onChange, onSelection, onLink, onImage, resolveImage, embedImage,
   assetUrl, focusMode = false, typewriter = false, spellcheck = false, wrap = true, allowRemoteMedia = true, theme = 'light', editorRef,
-  onContextMenu, documentPath, imageFolder,
+  onContextMenu, onFindResult, documentPath, imageFolder,
 }) {
   const richHost = useRef(null);
   const liveDetails = useRef(null);
@@ -259,6 +273,7 @@ export function Editor({
   const tabMemory = useRef(new Map());
   const liveCaret = useRef(null);
   const lastFind = useRef(null);
+  const findSession = useRef(null);
   const activeBlock = useRef(null);
   const activeCell = useRef(null);
   const editorContext = useRef(null);
@@ -273,7 +288,7 @@ export function Editor({
   const [richError, setRichError] = useState('');
   const [previewError, setPreviewError] = useState('');
 
-  latest.current = { mode, documentPath, onChange, onSelection, onLink, onImage, resolveImage, assetUrl, spellcheck, theme, typewriter, wrap };
+  latest.current = { mode, documentPath, onChange, onSelection, onLink, onImage, onFindResult, resolveImage, assetUrl, spellcheck, theme, typewriter, wrap };
 
   function publish(next) {
     if (next === content.current.raw) return;
@@ -427,6 +442,7 @@ export function Editor({
     return () => {
       view.destroy();
       source.current = null;
+      setRenderedSearchMatches();
     };
   }, []);
 
@@ -622,6 +638,7 @@ export function Editor({
           observer = new MutationObserver(decorate);
           observer.observe(editable, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['src'] });
           decorate();
+          if (latest.current.mode === 'live') refreshFind();
           if (latest.current.mode === 'live' && pendingLiveFocus.current === content.current.id) instance.focus();
           pendingLiveFocus.current = null;
         },
@@ -692,7 +709,7 @@ export function Editor({
       if (state?.doc.toString() === next) {
         view.setState(state);
         view.dispatch({ effects: [wrapping.current.reconfigure(latest.current.wrap ? EditorView.lineWrapping : []),
-          sourceSpelling.current.reconfigure(sourceSpellcheckSetting(latest.current.spellcheck))] });
+          sourceSpelling.current.reconfigure(sourceSpellcheckSetting(latest.current.spellcheck)), setSourceSearchMatches.of(null)] });
       } else {
         view.setState(EditorState.create({ doc: next, extensions: sourceExtensions(sourceUpdate, latest, wrapping.current, sourceSpelling.current) }));
       }
@@ -717,6 +734,7 @@ export function Editor({
       content.current.rich = null;
       if (activeCell.current) selectCell(null);
     }
+    refreshFind();
   }, [docId, mode, value]);
 
   useLayoutEffect(() => {
@@ -757,6 +775,7 @@ export function Editor({
         preview.replaceChildren(article);
         renderedPreview.current = { docId, value };
         tables = observeWideTables(article);
+        refreshFind();
       }).catch((error) => {
         if (alive) setPreviewError(error.message);
       });
@@ -832,46 +851,99 @@ export function Editor({
     return true;
   }
 
+  function clearFindHighlights() {
+    setRenderedSearchMatches();
+    source.current?.dispatch({ effects: setSourceSearchMatches.of(null) });
+  }
+
+  function refreshFind({ navigate = false, backward = false, scroll = false } = {}) {
+    const session = findSession.current;
+    if (!session) return;
+    const { expression, key, docId } = session;
+    const { mode } = latest.current;
+    const sourceMode = mode === 'source' || mode === 'split';
+    const view = source.current;
+    const previewReady = renderedPreview.current?.docId === content.current.id && renderedPreview.current.value === content.current.raw;
+    const editable = mode === 'live' ? rich.current?.vditor.ir.element : previewReady ? previewHost.current : null;
+    if ((sourceMode && !view) || (!sourceMode && !editable)) {
+      session.scrollOnReady ||= scroll || navigate;
+      clearFindHighlights();
+      latest.current.onFindResult?.({ pending: true });
+      return;
+    }
+    scroll ||= session.scrollOnReady;
+    session.scrollOnReady = false;
+    const rendered = editable ? visibleText(editable) : null;
+    const text = sourceMode ? view.state.doc.toString() : rendered.text;
+    const matches = session.text === text && session.matches ? session.matches : Array.from(text.matchAll(expression));
+    const last = docId === content.current.id && session.mode === mode ? lastFind.current : null;
+    let index = last && matches.length ? matches.findIndex(match => match.index >= last.index) : 0;
+    if (navigate && matches.length && last) {
+      const previous = matches.findIndex(match => match.index === last.index);
+      if (previous >= 0) index = (previous + (backward ? matches.length - 1 : 1)) % matches.length;
+    } else if (navigate && backward && !last) index = matches.length - 1;
+    if (index < 0 && matches.length) index = matches.length - 1;
+    const match = matches[index];
+    session.text = text;
+    session.matches = matches;
+    session.docId = content.current.id;
+    session.mode = mode;
+    lastFind.current = match ? { key, index: match.index } : null;
+
+    if (sourceMode) {
+      view.dispatch({ effects: [setSourceSearchMatches.of({ matches, index }),
+        ...((scroll || navigate) && match ? [EditorView.scrollIntoView(match.index, { y: 'nearest' })] : [])] });
+    } else view?.dispatch({ effects: setSourceSearchMatches.of(null) });
+    if (rendered) {
+      const renderedMatches = sourceMode ? Array.from(rendered.text.matchAll(expression)) : matches;
+      // Split mode navigates source offsets. Only mirror the current offset when both sides have the same text.
+      const renderedIndex = !sourceMode || rendered.text.trimEnd() === text.trimEnd() ? index : -1;
+      setRenderedSearchMatches(rendered.ranges, renderedMatches, renderedIndex);
+      if ((scroll || navigate) && match && renderedMatches[renderedIndex]) {
+        const renderedMatch = renderedMatches[renderedIndex];
+        const range = findTextRange(rendered.ranges, renderedMatch.index, renderedMatch.index + renderedMatch[0].length);
+        if (range) revealSearchRange(editable, range, liveDetails.current?.reveal);
+      }
+    } else setRenderedSearchMatches();
+    const result = { index: match ? index + 1 : 0, count: matches.length };
+    latest.current.onFindResult?.(result);
+    return result;
+  }
+
   function find(query, options = {}) {
     if (!query) {
+      findSession.current = null;
       lastFind.current = null;
-      return null;
+      clearFindHighlights();
+      latest.current.onFindResult?.(null);
+      return;
     }
     const key = JSON.stringify([query, Boolean(options.caseSensitive), Boolean(options.wholeWord), Boolean(options.regex)]);
-    const last = lastFind.current?.key === key ? lastFind.current : null;
-    const offset = last ? last.index + (options.backward ? 0 : Math.max(last.length, 1)) : options.backward ? Infinity : 0;
-
-    if (latest.current.mode === 'source' || latest.current.mode === 'split') {
-      const view = source.current;
-      if (!view) return null;
-      const matches = matchMarkdown(view.state.doc.toString(), query, options);
-      const match = nextMatch(matches, offset, options.backward);
-      if (!match) return null;
-      sourceSelection(view, match.index, match.index + match[0].length);
-      lastFind.current = { key, index: match.index, length: match[0].length, ordinal: matches.indexOf(match) };
-      return { index: matches.indexOf(match) + 1, count: matches.length };
+    const existing = findSession.current?.key === key;
+    if (!existing) {
+      lastFind.current = null;
+      try {
+        findSession.current = { key, expression: markdownSearchPattern(query, options) };
+      } catch {
+        findSession.current = null;
+        clearFindHighlights();
+        latest.current.onFindResult?.({ error: '正则表达式无效' });
+        return;
+      }
     }
-
-    const editable = latest.current.mode === 'read' ? previewHost.current : rich.current?.vditor.ir.element;
-    if (!editable) return null;
-    const { text, ranges } = visibleText(editable);
-    const matches = matchMarkdown(text, query, options);
-    const match = nextMatch(matches, offset, options.backward);
-    if (!match) return null;
-    selectRich(editable, ranges, match.index, match.index + match[0].length, liveDetails.current?.reveal);
-    lastFind.current = { key, index: match.index, length: match[0].length, ordinal: matches.indexOf(match) };
-    return { index: matches.indexOf(match) + 1, count: matches.length };
+    return refreshFind({ navigate: existing && !options.initialize, backward: options.backward, scroll: !existing });
   }
 
   function replace(query, replacement, options = {}) {
     if (latest.current.mode === 'read') return 0;
-    const sourceMode = latest.current.mode !== 'live';
+    if (latest.current.mode === 'live') return replaceRendered(query, replacement, options);
     const view = source.current;
-    const raw = sourceMode ? view.state.doc.toString() : content.current.raw;
+    if (!view) return 0;
+    const raw = view.state.doc.toString();
     const matches = matchMarkdown(raw, query, options);
     const key = JSON.stringify([query, Boolean(options.caseSensitive), Boolean(options.wholeWord), Boolean(options.regex)]);
     const previous = lastFind.current?.key === key ? lastFind.current : null;
-    const single = sourceMode ? nextMatch(matches, view.state.selection.main.from, false) : matches[previous?.ordinal ?? 0];
+    const single = nextMatch(matches, previous?.index ?? view.state.selection.main.from, false);
     const chosen = options.all ? matches : [single].filter(Boolean);
     if (!chosen.length) return 0;
 
@@ -879,15 +951,43 @@ export function Editor({
       from: match.index, to: match.index + match[0].length,
       insert: replacementText(match, replacement, options.regex),
     }));
-    if (sourceMode) {
-      view.dispatch({ changes });
-    } else {
-      let next = raw;
-      for (const { from, to, insert } of changes.reverse()) next = next.slice(0, from) + insert + next.slice(to);
-      publish(next);
-      syncRich(false);
+    view.dispatch({ changes });
+    refreshFind();
+    return chosen.length;
+  }
+
+  function replaceRendered(query, replacement, options) {
+    const instance = rich.current;
+    if (!instance || instance.vditor.ir.composingLock) return 0;
+    commitRich();
+    const engine = instance.vditor;
+    const clone = engine.ir.element.cloneNode(true);
+    const { text, ranges } = visibleText(clone);
+    const matches = matchMarkdown(text, query, options);
+    const current = matches.find(match => match.index === lastFind.current?.index);
+    const chosen = options.all ? matches : current ? [current] : [];
+    if (!chosen.length) return 0;
+    const edits = chosen.map(match => ({
+      range: findTextRange(ranges, match.index, match.index + match[0].length),
+      insert: replacementText(match, replacement, options.regex),
+    }));
+    const block = node => node.parentElement.closest('p, h1, h2, h3, h4, h5, h6, li, td, th, pre, summary, blockquote');
+    if (edits.some(({ range }) => !range || block(range.startContainer) !== block(range.endContainer))) {
+      throw new Error('此匹配跨越多个块，请在源码模式中替换。');
     }
-    lastFind.current = null;
+    const before = engine.lute.VditorIRDOM2Md(clone.innerHTML);
+    for (const { range, insert } of edits.reverse()) {
+      range.deleteContents();
+      if (insert) range.insertNode(clone.ownerDocument.createTextNode(insert));
+    }
+    const after = engine.lute.VditorIRDOM2Md(clone.innerHTML);
+    const next = projectMarkdownEdit(content.current.raw, before, after);
+    if (next === content.current.raw) return 0;
+    engine.undo.addToUndoStack(engine);
+    publish(next);
+    syncRich(false);
+    engine.undo.addToUndoStack(engine);
+    refreshFind();
     return chosen.length;
   }
 

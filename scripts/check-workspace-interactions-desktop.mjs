@@ -12,13 +12,17 @@ const profile = path.join(working, 'profile')
 const root = path.join(working, '项目')
 const main = path.join(root, '正文.md')
 const second = path.join(root, '来源.md')
+const searchFolder = path.join(root, '检索样例')
+const searchDocument = path.join(searchFolder, '目录子稿.md')
 const copy = path.join(root, '冲突副本.md')
 const savedAs = path.join(root, '另存版本.md')
 const original = '# 正文\n\nalpha ALPHA alphabetical\n\n## 子章节\n\nalpha\n'
-await Promise.all([mkdir(profile), mkdir(root)])
+const deliveryLine = '定位交付编号 42；交付编号 57。'
+await Promise.all([mkdir(profile), mkdir(searchFolder, { recursive: true })])
 await Promise.all([
   writeFile(main, original),
-  writeFile(second, '# 来源\n\n定位交付编号 42。\n'),
+  writeFile(second, '# 来源\n\n' + deliveryLine + '\n'),
+  writeFile(searchDocument, '# 子稿\n\n核对交付编号 88。\n'),
   writeFile(path.join(profile, 'preferences.json'), JSON.stringify({ mode: 'source' })),
 ])
 
@@ -105,17 +109,41 @@ try {
   await context(tree('项目'), '固定文件夹')
   await page.getByRole('heading', { name: '固定文件夹' }).waitFor()
 
-  await button('在工作区内搜索').click()
   const search = modal('搜索工作区')
   const query = search.getByRole('textbox', { name: '工作区搜索文字' })
-  await search.getByRole('checkbox', { name: '正则表达式' }).check()
-  await query.fill('交付编号 [0-9]+')
-  await query.press('Enter')
-  await search.getByText('1 处匹配', { exact: true }).waitFor()
-  await search.getByRole('button', { name: /来源\.md · 第 3 行/ }).click()
+  const deliveryResult = search.getByRole('button', { name: /来源\.md · 第 3 行，第 3 列 · 2 处/ })
+  async function openDeliverySearch() {
+    await button('在工作区内搜索').click()
+    await search.getByRole('checkbox', { name: '正则表达式' }).check()
+    await query.fill('交付编号 [0-9]+')
+    await query.press('Enter')
+    await search.getByText('3 处匹配 · 2 行', { exact: true }).waitFor()
+  }
+  await openDeliverySearch()
+  assert.equal(await deliveryResult.count(), 1)
+  assert.deepEqual(await deliveryResult.locator('mark').allTextContents(), ['交付编号 42', '交付编号 57'])
+  assert.deepEqual(await search.getByRole('button', { name: /目录子稿\.md · 第 3 行/ }).locator('mark').allTextContents(), ['交付编号 88'])
+  if (process.env.SUJIAN_WORKSPACE_SEARCH_SCREENSHOT) {
+    await search.screenshot({ path: process.env.SUJIAN_WORKSPACE_SEARCH_SCREENSHOT })
+  }
+  await deliveryResult.click()
   await search.waitFor({ state: 'hidden' })
   assert.equal(await tab('来源.md').getAttribute('aria-selected'), 'true')
-  await page.waitForFunction(() => document.querySelector('.cm-activeLine')?.textContent === '定位交付编号 42。')
+  await page.waitForFunction(line => document.querySelector('.cm-activeLine')?.textContent === line, deliveryLine)
+
+  await button('即时').click()
+  await page.getByLabel('Markdown 即时编辑').getByText(deliveryLine, { exact: true }).waitFor()
+  await tab('正文.md').click()
+  await openDeliverySearch()
+  await deliveryResult.click()
+  await search.waitFor({ state: 'hidden' })
+  assert.equal(await tab('来源.md').getAttribute('aria-selected'), 'true')
+  assert.equal(await button('即时').getAttribute('aria-pressed'), 'true')
+  await page.waitForFunction(line => {
+    const anchor = window.getSelection()?.anchorNode
+    const element = anchor?.nodeType === Node.ELEMENT_NODE ? anchor : anchor?.parentElement
+    return element?.closest('p')?.textContent.trim() === line
+  }, deliveryLine)
   await tab('正文.md').click()
 
   await button('查找').click()
@@ -125,7 +153,7 @@ try {
   await regex.check()
   await findText.fill('[')
   await findText.press('Enter')
-  await find.getByText(/regular expression|unterminated|正则/i).waitFor()
+  await find.getByRole('status').getByText('正则表达式无效', { exact: true }).waitFor()
   await regex.uncheck()
   await find.getByRole('checkbox', { name: '区分大小写' }).check()
   await find.getByRole('checkbox', { name: '全词' }).check()
@@ -136,8 +164,10 @@ try {
   await find.getByRole('textbox', { name: '替换为' }).fill('beta')
   await button('替换一处', find).click()
   await find.getByText('已替换 1 处', { exact: true }).waitFor()
+  await find.locator('.match-count').getByText('1 / 1', { exact: true }).waitFor()
   await button('全部替换', find).click()
-  await find.getByText('已替换 1 处', { exact: true }).waitFor()
+  await find.locator('.match-count').getByText('无匹配', { exact: true }).waitFor()
+  await source().getByText('beta ALPHA alphabetical', { exact: true }).waitFor()
   await button('关闭查找').click()
   await action('保存')
   await saved()

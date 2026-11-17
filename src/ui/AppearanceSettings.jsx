@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Check, Upload, Trash2 } from 'lucide-react'
 import { THEME_OPTIONS } from '../theme/themes.js'
 import { BUILT_IN_FONTS, FONT_ROLES, fontStack, importedFontId } from '../workspace/fonts.js'
+import { MAX_DOCUMENT_WIDTH } from '../workspace/useWorkspace.js'
 import { IconButton } from './Controls.jsx'
 
 export function ThemeSettings({ settings, configure }) {
@@ -20,7 +21,7 @@ export function ThemeSettings({ settings, configure }) {
         <span className="theme-name">{theme.name}{settings.theme === theme.id && <Check size={14} aria-hidden="true"/>}</span>
       </button>)}
     </div>
-    <label className="setting"><span>文档宽度</span><input type="range" min="520" max="1160" step="10"
+    <label className="setting"><span>文档宽度</span><input type="range" min="520" max={MAX_DOCUMENT_WIDTH} step="10"
       value={settings.width} onChange={event => configure({ width: +event.target.value })}/><output>{settings.width} px</output></label>
     <details className="theme-custom">
       <summary>自定义主题 CSS</summary>

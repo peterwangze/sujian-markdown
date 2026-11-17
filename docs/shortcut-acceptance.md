@@ -6,9 +6,9 @@
 
 | 产品或规范 | 观察与采用的做法 |
 | --- | --- |
-| Typora | 标题与段落直接用数字键，常用块和行内格式按任务分配快捷键。`Tab` 和 `Shift+Tab` 随着光标进入列表、代码或表格改变动作，表格末格可用 `Tab` 添加一行。 [快捷键](https://support.typora.io/Shortcut-Keys/) · [表格编辑](https://support.typora.io/Table-Editing/) · [代码围栏](https://support.typora.io/Code-Fences/) · [换行](https://support.typora.io/Line-Break/) |
+| Typora | 标题与段落直接用数字键，常用块和行内格式按任务分配快捷键。`Tab` 和 `Shift+Tab` 随着光标进入列表、代码或表格改变动作，表格末格可用 `Tab` 添加一行。查找与工作区搜索提供区分大小写、全词和正则选项。 [快捷键](https://support.typora.io/Shortcut-Keys/) · [表格编辑](https://support.typora.io/Table-Editing/) · [代码围栏](https://support.typora.io/Code-Fences/) · [换行](https://support.typora.io/Line-Break/) · [查找](https://support.typora.io/Search/) |
 | Obsidian | 保留平台文本编辑约定，应用命令可从命令面板发现，也能在设置中搜索和录制。Markdown 结构由光标位置和编辑模式决定。 [编辑快捷键](https://obsidian.md/help/editing-shortcuts) · [自定义快捷键](https://obsidian.md/help/hotkeys) · [快速切换](https://obsidian.md/help/plugins/quick-switcher) |
-| VS Code | 快速打开按文件检索，命令面板按动作检索。快捷键列表包含未分配的命令，命令根据当前焦点或编辑状态生效。 [键位设置与作用域](https://code.visualstudio.com/docs/getstarted/keybindings) · [Markdown 编辑](https://code.visualstudio.com/docs/languages/markdown) |
+| VS Code | 快速打开按文件检索，命令面板按动作检索。快捷键列表包含未分配的命令，命令根据当前焦点或编辑状态生效。文档内查找随输入高亮匹配，回车和反向回车前后跳转。 [键位设置与作用域](https://code.visualstudio.com/docs/getstarted/keybindings) · [Markdown 编辑](https://code.visualstudio.com/docs/languages/markdown) · [查找与替换](https://code.visualstudio.com/docs/editing/codebasics#_find-and-replace) |
 | WAI-ARIA APG | 菜单使用方向键移动、回车执行和 `Esc` 返回触发点。用键盘访问的菜单和文件操作应保留明确的焦点。 [菜单键盘交互](https://www.w3.org/WAI/ARIA/apg/patterns/menubar/) · [标签页键盘交互](https://www.w3.org/WAI/ARIA/apg/patterns/tabs/) |
 
 ## 写作与 Markdown 格式
@@ -87,8 +87,8 @@ Windows Electron 的即时、源码和分栏桌面回归已通过。测试使用
 
 | 任务 | 默认按键 | 预期与检查点 |
 | --- | --- | --- |
-| 文档内查找、替换 | `Mod+F`。替换用 Win/Linux `Ctrl+H`、macOS `⌘+Alt+F`。 | 预填编辑区首行选区并聚焦搜索。阅读可查找，替换在可编辑模式可用。分别检查替换一处、全部替换和取消。 |
-| 查看查找结果 | `Enter`、`Shift+Enter`、`F3`、`Shift+F3`、`Esc` | 查找输入中回车向后找、反向回车向前找。查找栏已打开时 `F3` 与 `Shift+F3` 在结果间循环，`Esc` 关闭查找栏。 |
+| 文档内查找、替换 | `Mod+F`。替换用 Win/Linux `Ctrl+H`、macOS `⌘+Alt+F`。 | 预填编辑区首行选区并聚焦搜索。随输入高亮所有匹配，显示当前项及总数。阅读可查找，替换在可编辑模式可用。分别检查替换一处、全部替换和取消。 |
+| 查看查找结果 | `Enter`、`Shift+Enter`、`F3`、`Shift+F3`、`Esc` | 查找输入中回车向后找、反向回车向前找。查找栏已打开时 `F3` 与 `Shift+F3` 在结果间循环，当前匹配用独立颜色显示。`Esc` 关闭查找栏并清除高亮。 |
 | 跳转到行、搜索工作区 | `Mod+G`、`Mod+Shift+F` | 跳转按 Markdown 源码行号定位。工作区搜索跨文件，打开结果后定位到行。 |
 | 快速打开、命令面板 | `Mod+P`、`Mod+Shift+P` | 前者搜索打开、近期和工作区文件，后者搜索命令。均可用 `↑`、`↓`、`Enter` 执行，`Esc` 关闭。 |
 | 新建、打开文档、打开文件夹 | `Mod+N`、`Mod+O`、`Mod+Shift+O` | 新建打开草稿，打开文档支持文件选择，打开文件夹更换工作区。选中文件夹并打开上下文菜单，可在该目录直接新建文档。 |

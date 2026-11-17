@@ -99,15 +99,19 @@ export function projectMarkdownEdit(raw, before, after) {
   return result + raw.slice(cursor);
 }
 
+export function markdownSearchPattern(query, options = {}) {
+  const escaped = options.regex ? query : query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const flags = options.caseSensitive ? 'gu' : 'giu';
+  if (options.regex && options.wholeWord) new RegExp(query, flags);
+  const pattern = options.wholeWord ? `(?<![\\p{L}\\p{N}_])(?:${escaped})(?![\\p{L}\\p{N}_])` : escaped;
+  return new RegExp(pattern, flags);
+}
+
 export function matchMarkdown(text, query, options = {}) {
   if (!query) return [];
 
-  const escaped = options.regex ? query : query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const pattern = options.wholeWord ? `(?<![\\p{L}\\p{N}_])(?:${escaped})(?![\\p{L}\\p{N}_])` : escaped;
-  const flags = options.caseSensitive ? 'gu' : 'giu';
-
   try {
-    return Array.from(text.matchAll(new RegExp(pattern, flags)));
+    return Array.from(text.matchAll(markdownSearchPattern(query, options)));
   } catch {
     return [];
   }

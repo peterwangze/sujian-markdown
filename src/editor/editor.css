@@ -30,6 +30,10 @@
 .editor-source .cm-activeLine { background: transparent; }
 .editor-source .cm-editor { color: var(--ink); caret-color: var(--accent-ink); }
 .editor-surface ::selection { color: var(--ink); background: var(--selection, var(--selected)); }
+.editor-find-match { background-color: #f6e19b; color: #292013; }
+.editor-find-current { background-color: #ffb74f; color: #292013; text-decoration: underline; }
+::highlight(sujian-find-match) { background-color: #f6e19b; color: #292013; }
+::highlight(sujian-find-current) { background-color: #ffb74f; color: #292013; text-decoration: underline; }
 .editor-focus-mode .editor-source .cm-line:not(.cm-activeLine) { opacity: .45; }
 .editor-typewriter .editor-source .cm-scroller { padding-block: 35vh; }
 .editor-live .vditor {

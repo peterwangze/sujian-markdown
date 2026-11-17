@@ -6,7 +6,7 @@
 
 <p align="center"><strong>写作时看见排版，改稿时看清变化。</strong></p>
 <p align="center">给长文、技术文档和改稿用的本地 Markdown 编辑器。边写边看排版，用键盘找到文件和命令，再把确认过的改动交付出去。</p>
-<p align="center"><a href="https://github.com/peterwangze/sujian-markdown/releases/tag/v1.4.21"><strong>下载 v1.4.21 离线安装包</strong></a> · Windows / macOS / Linux</p>
+<p align="center"><a href="https://github.com/peterwangze/sujian-markdown/releases/tag/v1.4.22"><strong>下载 v1.4.22 离线安装包</strong></a> · Windows / macOS / Linux</p>
 
 ## 用顺手的方式写作
 
@@ -17,6 +17,7 @@
 - **手留在键盘上，写完一段再切文档。** 在即时、源码或分栏编辑区按 `Ctrl/⌘+1` 到 `6` 设置标题，按 `Ctrl/⌘+0` 转回正文。用 `Ctrl/⌘+B` 加粗、`Ctrl/⌘+K` 插入链接、`Ctrl/⌘+P` 按文件名定位，或用 `Ctrl+Tab` 切到下一份文档。在 **设置 → 快捷键** 搜索命令，按下自己的组合键即可录入。遇到冲突会显示占用的命令，每个命令都可恢复默认。[分场景快捷键清单](docs/shortcut-acceptance.md)
 - **少一次伸手拿鼠标。** 文件侧栏可用方向键在条目间移动、展开和折叠目录。工具菜单支持方向键选择和 `Esc` 返回。在标签栏用 `Delete` 关闭文件后，可以接着用方向键操作剩余标签。
 - **一眼看出文档在哪一层。** 文件树中同层的文件和文件夹共用对齐起点，子项逐层向右缩进。窄侧栏也可以滚动查看深层文件名。
+- **在文件管理器和编辑器之间切换时，文档列表会跟上。** 在外部新建、改名或删除工作区文件，展开的目录和文档列表会自动更新，保留当前标签与目录展开状态。
 - **写清单时直接输入列表标记。** 在即时编辑的段首键入 `*`、`-` 或 `+`，按空格即可开始无序列表。用 `Tab` 缩进，用 `Shift+Tab` 提升嵌套项，可一次移动同级选中的多项。一级空项按 `Enter` 退出。表格可前后移格，末格按 `Tab` 接着填新行。先按 `Esc` 再按 `Tab` 或 `Shift+Tab` 可移出编辑区。[编辑按键行为](docs/usability.md#正文编辑按键)
 
 <img src="docs/images/sujian-shortcuts.png" alt="素笺快捷键设置正在录制一级标题的组合键，并指出它与二级标题冲突。" width="650">
@@ -65,17 +66,20 @@ AI 生成由你选择的外部工具完成。素笺在本机进行审阅、比�
 
 ![素笺暖白主题下的单栏即时编辑。左侧是本地文件树，正文展示标题、提纲、引用和表格。](docs/images/sujian-writing.png)
 
-- **输入时就看到正文效果。** 标题、任务列表和表格随输入呈现。可以切换到源码、分栏预览和阅读模式。写长文时可调整正文宽度，并开启专注或打字机模式。
+- **输入时就看到正文效果。** 标题、任务列表和表格随输入呈现。可以切换到源码、分栏预览和阅读模式。正文默认使用最大宽度 1160 px，窄窗口按可用空间排版。可在 **设置 → 外观** 收窄版面，或开启专注与打字机模式。
 - **长表格内容在单元格里换行。** 说明文字、长链接和行内代码随可用宽度折行，短列仍易读。列数太多时可以横向滚动表格。编辑和预览中的超宽公式与预格式文本也可在各自的块内查看。
 - **用熟悉的 HTML 写技术说明。** 在即时编辑里查看上下标、键帽、高亮和注音。用 `<details>` 收起长日志、Markdown 清单和补充说明，读者可以按需展开。颜色、字号、纯色背景和对齐可随文档预览与导出 HTML。[试用 HTML 排版样例](docs/markdown-format-qa.md#cm-html)
 - **从仓库打开文档就能沿着目录读。** 文内链接识别 GitHub 的章节锚点，包括中文标题和重复标题，也能定位手写的 HTML 锚点。在即时编辑中用 `Shift+Enter` 换行，可在当前段落、引用或清单项中继续写。
 - **需要时再校对正文。** 正文拼写检查默认关闭。可在 **设置 → 编辑 → 正文拼写检查** 开启，右击错词可查看替换建议。即时、源码和分栏编辑均会跳过代码、公式、链接地址和常见技术标识符。
-- **把多份文档放在手边。** 用标签页切换文件，从大纲跳到章节，在工作区里跨文件搜索。长文档自动进入源码模式，便于滚动和查找。
+- **快速看清一篇文档里有几处命中。** 按 `Ctrl/⌘+F` 输入关键词，即时编辑、源码、分栏和阅读都会显示命中高亮及当前序号和总数。用 `Enter` 或 `Shift+Enter` 循环跳转，用 `Esc` 关闭查找。支持区分大小写、全词和正则表达式。
+- **在多份文档里找同一条线索。** 从侧栏打开 **在工作区内搜索**，结果摘要直接标出关键词，并按实际匹配次数计数。点击一行直达对应位置。标签页便于在多份文档间切换，大纲可直达章节。长文档默认以源码模式打开，便于滚动和查找。
 - **保住正在写的内容。** 重启后可以从侧栏恢复未保存的草稿。磁盘文件有外部改动时，可以对照磁盘版本，并把正在编辑的内容另存成副本。
 - **直接引用已有插图。** 从文件管理器复制、拖入或选取图片时，素笺引用原文件，能用相对路径时就写相对路径。粘贴时也会优先采用剪贴板提供的有效图片地址。只有截图等缺少可用地址的图像数据需要落盘，已保存文档默认写入 `文档名.assets`，也可在 **设置 → 文件与资源** 指定目录。
 - **把整篇 Markdown 的插图一起交付。** 在文件树或标签页右击已保存的文档，选择 **收拢图片到文档资源目录**。素笺按原图去重，为可读的图片写入相对引用，并列出未能处理的地址。开启 **显示网络图片** 后也可收拢网络图。点击结果窗口中的 **保存文档**，再把 Markdown 和资源目录一起发送。需要逐张处理时，可继续使用图片右键菜单里的 **复制到文档资源目录**。
 - **发出带图的成品，收件人可以直接打开。** PDF、HTML、PNG、Word、ODT、RTF、EPUB 和 Reveal.js 导出会带上可读取的本地图片。相对路径、绝对路径、`file://` 和设置中的图片根路径都可用于找图，图片缺失时会提示。导出 Markdown 时保留原有链接，交付源码时请同时提供引用的资源。
 - **断网也能导出成品。** 本地公式、Mermaid、Flowchart.js 和 Graphviz 图表可离线渲染。包含 GitHub 行内公式和引用、清单内图表的文档可导出为 PDF、HTML、Word 或 EPUB。安装包内置 Pandoc，也支持 PNG 长图和 Reveal.js 幻灯片等格式。
+
+![即时编辑中查找「版本计划」，正文、列表和表格的三处命中同时高亮，当前是第 2 处。](docs/images/sujian-document-find.png)
 
 <img src="docs/images/sujian-image-batch-collection.png" alt="图片收拢结果显示已复制 3 张图片、更新 8 处引用，并列出未找到的原图片地址。" width="460">
 
@@ -119,15 +123,15 @@ Windows 使用安装目录中的 `Sujian.exe`。macOS 使用 `/Applications/Suji
 
 | 系统 | x64 / Intel | ARM64 / Apple 芯片 |
 | --- | --- | --- |
-| Windows | [EXE](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.21/Sujian-1.4.21-win-x64.exe) | [EXE](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.21/Sujian-1.4.21-win-arm64.exe) |
-| macOS 13+ | [DMG](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.21/Sujian-1.4.21-mac-x64.dmg) | [DMG](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.21/Sujian-1.4.21-mac-arm64.dmg) |
-| Linux | [AppImage](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.21/Sujian-1.4.21-linux-x86_64.AppImage) · [DEB](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.21/Sujian-1.4.21-linux-amd64.deb) | [AppImage](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.21/Sujian-1.4.21-linux-arm64.AppImage) · [DEB](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.21/Sujian-1.4.21-linux-arm64.deb) |
+| Windows | [EXE](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.22/Sujian-1.4.22-win-x64.exe) | [EXE](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.22/Sujian-1.4.22-win-arm64.exe) |
+| macOS 13+ | [DMG](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.22/Sujian-1.4.22-mac-x64.dmg) | [DMG](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.22/Sujian-1.4.22-mac-arm64.dmg) |
+| Linux | [AppImage](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.22/Sujian-1.4.22-linux-x86_64.AppImage) · [DEB](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.22/Sujian-1.4.22-linux-amd64.deb) | [AppImage](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.22/Sujian-1.4.22-linux-arm64.AppImage) · [DEB](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.22/Sujian-1.4.22-linux-arm64.deb) |
 
 - **Windows** 双击 EXE 安装。安装包未做 Authenticode 签名。ARM64 版的 Pandoc 使用 Windows 11 的 x64 仿真。
 - **macOS** 挂载 DMG 后，将素笺拖到“应用程序”。此版本采用临时签名，首次启动时可能需要在“隐私与安全性”中允许打开。[Apple 打开应用说明](https://support.apple.com/en-us/102445)
 - **Linux** 赋予 AppImage 执行权限后打开，或通过软件包管理器安装 DEB。运行依赖发行版提供的 Chromium 系统库。
 
-安装包包含应用运行时、渲染资源、字体与 Pandoc。六种系统与架构组合均通过成品启动检查。[SHA-256 清单](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.21/SHA256SUMS.txt) · [构建与验证记录](https://github.com/peterwangze/sujian-markdown/actions/workflows/release.yml)
+安装包包含应用运行时、渲染资源、字体与 Pandoc。六种系统与架构组合均通过成品启动检查。[SHA-256 清单](https://github.com/peterwangze/sujian-markdown/releases/download/v1.4.22/SHA256SUMS.txt) · [构建与验证记录](https://github.com/peterwangze/sujian-markdown/actions/workflows/release.yml)
 
 点击窗口右下角的版本号，打开 **关于素笺 → 检查更新**。素笺会查询 GitHub 的最新正式版，告诉你是否已经是最新版。发现新版时，可以直接阅读更新内容，并下载适合当前系统和架构的安装包。Linux 可选择 AppImage 或 DEB。
 

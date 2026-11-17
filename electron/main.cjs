@@ -7,6 +7,7 @@ const { tmpdir } = require('node:os');
 const { pathToFileURL } = require('node:url');
 const { createAssets, scheme: assetScheme } = require('./assets.cjs');
 const { createConversion } = require('./conversion.cjs');
+const { createDirectoryWatcher } = require('./directory-watcher.cjs');
 const { documentExtension, getDocument, pathKey, saveDocument } = require('./documents.cjs');
 const { createFileOperations } = require('./file-operations.cjs');
 const { acceptedExtensions: fontExtensions, createFontStore, fontRoute } = require('./fonts.cjs');
@@ -215,12 +216,19 @@ async function createWindow(initialPaths = [], commands = []) {
   state.watcher = createWatcher({ knownDocuments, notify: (update) => {
     if (!window.isDestroyed()) window.webContents.send('sujian:external-change', update);
   } });
+  state.directoryWatcher = createDirectoryWatcher({ notify: (update) => {
+    if (!window.isDestroyed() && !window.webContents.isCrashed()) window.webContents.send('sujian:directory-change', update);
+  } });
   states.set(window.id, state);
   const windowId = window.id;
-  window.on('focus', () => state.watcher.refresh());
+  window.on('focus', () => {
+    state.watcher.refresh();
+    state.directoryWatcher.refresh();
+  });
   window.on('close', (event) => requestClose(window, event));
   window.on('closed', () => {
     state.watcher.dispose();
+    state.directoryWatcher.dispose();
     state.search?.abort();
     state.updateCheck?.abort();
     state.updateDownload?.abort();
@@ -231,6 +239,7 @@ async function createWindow(initialPaths = [], commands = []) {
     if (quitting && states.size === 0) app.quit();
   });
   window.webContents.on('render-process-gone', () => {
+    state.directoryWatcher.setPaths([]);
     if (updateInstallation?.windows.has(state) && !updateInstallation.handoff) {
       updateInstallation.controller.abort(new Error('有窗口已停止响应，请重新开始安装。'));
     }
@@ -530,6 +539,7 @@ function installIpc({ assets, conversion, fonts, storage, operations }) {
   handle('create-file', (_state, parent, name) => operations.createFile(parent, name));
   handle('undo-file-operation', () => operations.undoFileOperation());
   handle('set-watched-files', (state, paths) => state.watcher.setPaths(paths));
+  handle('set-watched-directories', (state, paths) => state.directoryWatcher.setPaths(paths));
   handle('load-drafts', () => storage.loadDrafts());
   handle('save-draft', (_state, draft) => storage.saveDraft(draft));
   handle('delete-draft', (_state, id) => storage.deleteDraft(id));
