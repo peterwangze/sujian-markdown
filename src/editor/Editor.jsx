@@ -22,7 +22,9 @@ import { decorateLiveSpellcheck } from './live-spellcheck.js';
 import { imageTransfer } from './image-paste.js';
 import { formatLiveSelection } from './live-inline-format.js';
 import { openEnclosingDetails, scrollToMarkdownAnchor } from './markdown-anchors.js';
-import { matchMarkdown, markdownSearchPattern, projectMarkdownEdit, replacementText } from './markdown-edits.js';
+import { matchMarkdown, markdownSearchPattern, projectMarkdownEdit, replacementText, spliceChanges } from './markdown-edits.js';
+import { createLiveModel, isCaretMarker, serveMarkdown } from './live-model.js';
+import { speedUpLiveEngine } from './live-engine.js';
 import { handleRichCodeKeys } from './rich-code-keys.js';
 import { handleRichListKeys, handleRichListTrigger } from './rich-list-keys.js';
 import { handleRichHardBreak, handleRichParagraphKeys } from './rich-paragraph-keys.js';
@@ -67,6 +69,13 @@ const tableContextActions = {
   'table-delete-row': tableActions[4], 'table-delete-column': tableActions[5],
 };
 const pasteActions = { paste: 'paste', 'paste-plain': 'pasteAndMatchStyle' };
+const requestIdle = (work) => window.requestIdleCallback
+  ? requestIdleCallback(work, { timeout: 2000 })
+  : setTimeout(() => work({ timeRemaining: () => 0 }), 60);
+const dropIdle = (handle) => window.requestIdleCallback ? cancelIdleCallback(handle) : clearTimeout(handle);
+// Typing rests for this long before the estimate is checked against the whole editor.
+const confirmDelay = 2000;
+const confirmLimit = 60_000;
 
 function sourceSpellcheckSetting(enabled) {
   return [EditorView.contentAttributes.of({ spellcheck: String(enabled) }), enabled ? sourceSpellcheckExclusions : []];
@@ -268,7 +277,14 @@ export function Editor({
   const wrapping = useRef(new Compartment());
   const sourceSpelling = useRef(new Compartment());
   const latest = useRef(null);
-  const content = useRef({ id: docId, raw: value, rich: null });
+  const content = useRef({ id: docId, raw: value, md: null, synced: false });
+  const live = useRef(null);
+  const liveObserver = useRef(null);
+  const liveServed = useRef(null);
+  const decorateSoon = useRef(null);
+  const confirmSoon = useRef(null);
+  const reseedUndo = useRef(null);
+  const sourceRaw = useRef(value);
   const imageCache = useRef(new Map());
   const tabMemory = useRef(new Map());
   const liveCaret = useRef(null);
@@ -296,24 +312,65 @@ export function Editor({
     latest.current.onChange?.(next);
   }
 
-  function commitRich() {
+  // Brings the document in step with the live editor. The editor's Markdown
+  // is estimated from the edited blocks; `verify` checks the estimate against
+  // a whole-document conversion. Timers pass `schedule` as false, since only
+  // edits start the resting check.
+  function commitRich(authoritative, verify = false, schedule = true) {
     const instance = rich.current;
-    const before = content.current.rich;
-    if (!instance || before === null || latest.current.mode !== 'live' || instance.vditor.ir.composingLock) return;
-    const next = instance.getValue();
+    if (!instance || !content.current.synced || latest.current.mode !== 'live' || instance.vditor.ir.composingLock) return;
+    if (currentFenceSources().some(Boolean)) commitStructuredFences(instance);
+    else {
+      const records = liveObserver.current?.takeRecords();
+      if (records?.length) {
+        live.current.observe(records);
+        if (records.some((record) => record.type !== 'attributes' || record.attributeName === 'src')) decorateSoon.current?.();
+      }
+      // Text the editor was handed from the estimate confirms nothing.
+      const next = live.current.flush(liveServed.current?.(authoritative) ? undefined : authoritative, verify);
+      if (next !== null) publish(next);
+    }
+    if (schedule) confirmSoon.current?.();
+  }
+
+  // Fence headers with attributes are serialised in full, so that the headers
+  // survive Vditor's undo snapshots.
+  function commitStructuredFences(instance) {
     const sources = currentFenceSources();
+    const before = content.current.md;
+    const next = instance.getValue();
     const baseline = completeFenceHeaders(before, sources);
     const after = completeFenceHeaders(next, liveFenceHistorySources(instance.vditor.ir.element, sources));
     if (next === before && after === baseline) return;
-    content.current.rich = next;
+    content.current.md = next;
     publish(projectMarkdownEdit(content.current.raw, baseline, after));
   }
 
+  // While Vditor adds the copy button to each code block it reads the block
+  // with innerText, and after the button before was added that lays the whole
+  // editor out again. The text of code is the same when read as plain text.
+  function withoutLayout(action) {
+    const prototype = HTMLElement.prototype
+    const innerText = Object.getOwnPropertyDescriptor(prototype, 'innerText')
+    Object.defineProperty(prototype, 'innerText', { ...innerText, get() { return this.textContent } })
+    try {
+      return action()
+    } finally {
+      Object.defineProperty(prototype, 'innerText', innerText)
+    }
+  }
+
   function syncRich(clearHistory = true) {
-    if (!rich.current) return;
-    rich.current.setValue(content.current.raw, clearHistory);
-    content.current.rich = rich.current.getValue();
-    liveFenceHistorySources(rich.current.vditor.ir.element, currentFenceSources());
+    if (!rich.current) return
+    withoutLayout(() => rich.current.setValue(content.current.raw, clearHistory));
+    const sources = currentFenceSources();
+    liveFenceHistorySources(rich.current.vditor.ir.element, sources);
+    content.current.md = sources.some(Boolean) ? rich.current.getValue() : null;
+    content.current.synced = true;
+    // The editor is loaded from the document text, so the editor starts in step with it.
+    liveObserver.current?.takeRecords();
+    live.current.reset(content.current.raw);
+    if (clearHistory) reseedUndo.current?.();
   }
 
   function currentFenceSources() {
@@ -359,7 +416,14 @@ export function Editor({
   function sourceUpdate(update) {
     if (latest.current.mode === 'live') return;
     if (update.docChanged && update.transactions.some((transaction) => !transaction.annotation(externalEdit))) {
-      publish(projectMarkdownEdit(content.current.raw, update.startState.doc.toString(), update.state.doc.toString()));
+      const { raw } = content.current;
+      // The editor text is the document itself unless it was formatted differently.
+      if (sourceRaw.current === raw && !raw.includes('\r')) {
+        publish(spliceChanges(raw, update.changes));
+        sourceRaw.current = content.current.raw;
+      } else {
+        publish(projectMarkdownEdit(raw, update.startState.doc.toString(), update.state.doc.toString()));
+      }
     }
     if (update.selectionSet) {
       const { from, to } = update.state.selection.main;
@@ -439,6 +503,7 @@ export function Editor({
     const extensions = sourceExtensions(sourceUpdate, latest, wrapping.current, sourceSpelling.current);
     const view = new EditorView({ parent: sourceHost.current, state: EditorState.create({ doc: sourceText(content.current.raw), extensions }) });
     source.current = view;
+    sourceRaw.current = view.state.doc.toString();
     return () => {
       view.destroy();
       source.current = null;
@@ -472,13 +537,35 @@ export function Editor({
     let observer;
     let tables;
     let refreshHtml;
+    let frame;
+    let confirmTimer;
+    let confirmHandle;
+    // Code blocks are highlighted and decorated once the document is in the
+    // editor. Vditor takes its first undo entry before that, and undoing the
+    // first edit would bring it all back. The entry is taken again once the
+    // editor has settled, as long as nothing was typed meanwhile.
+    let reseedTimer;
+    let typed = false;
+    const reseed = () => {
+      reseedTimer = undefined;
+      const undo = instance.vditor.undo;
+      const state = undo[instance.vditor.currentMode];
+      if (!alive || typed || state.undoStack.length !== 1 || state.redoStack.length) return;
+      undo.clearStack(instance.vditor);
+      undo.addToUndoStack(instance.vditor);
+    };
+    reseedUndo.current = () => {
+      typed = false;
+      clearTimeout(reseedTimer);
+      reseedTimer = setTimeout(reseed, 600);
+    };
+    // Vditor handles an input event first; the settled DOM is what the
+    // document follows.
     const flush = (event) => {
       if (event.isComposing) return;
-      queueMicrotask(() => {
-        if (!alive) return;
-        commitRich();
-        if (event.type === 'compositionend') refreshHtml?.();
-      });
+      typed = true;
+      commitRich();
+      if (event.type === 'compositionend') refreshHtml?.();
     };
     let tabExitUntil = 0;
     const editBeforeInput = (event) => {
@@ -612,8 +699,27 @@ export function Editor({
             return;
           }
           rich.current = instance;
-          syncRich();
+          speedUpLiveEngine(instance.vditor);
           const editable = instance.vditor.ir.element;
+          const lute = instance.vditor.lute;
+          const convert = lute.VditorIRDOM2Md;
+          // Lute's conversion of the DOM, as Vditor reports it.
+          live.current = createLiveModel({
+            element: editable,
+            convert: (html) => convert.call(lute, html).replace(/\u00a0/g, ' '),
+            idle: requestIdle,
+            cancel: dropIdle,
+          });
+          // Vditor converts the whole editor after a pause in typing. The
+          // estimate already holds that text, so those conversions are spared;
+          // the estimate is checked against the editor once typing has rested.
+          liveServed.current = serveMarkdown(instance.vditor, () => {
+            if (!content.current.synced || latest.current.mode !== 'live' || instance.vditor.ir.composingLock ||
+              currentFenceSources().some(Boolean)) return null;
+            commitRich();
+            return live.current.text();
+          });
+          syncRich();
           tables = observeWideTables(editable);
           editable.setAttribute('aria-label', 'Markdown 即时编辑');
           editable.setAttribute('aria-description', '先按 Escape，再按 Tab 或 Shift+Tab 可移出编辑区。');
@@ -627,6 +733,7 @@ export function Editor({
             liveDetails.current.refresh(content.current.id);
           };
           const decorate = () => {
+            frame = undefined;
             resolveLiveAssets();
             refreshHtml();
             renderLiveGithubMath(editable);
@@ -635,9 +742,34 @@ export function Editor({
               void highlightCode(preview, latest.current.theme, true).catch(() => {});
             }
           };
-          observer = new MutationObserver(decorate);
-          observer.observe(editable, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['src'] });
+          // Every change of a frame is decorated once, before it is painted.
+          decorateSoon.current = () => {
+            if (frame === undefined) frame = requestAnimationFrame(decorate);
+          };
+          observer = new MutationObserver((records) => {
+            live.current.observe(records);
+            if (reseedTimer !== undefined) {
+              clearTimeout(reseedTimer);
+              reseedTimer = setTimeout(reseed, 600);
+            }
+            if (records.some((record) => !isCaretMarker(record) && (record.type !== 'attributes' || record.attributeName === 'src'))) decorateSoon.current();
+          });
+          liveObserver.current = observer;
+          observer.observe(editable, { childList: true, subtree: true, characterData: true, attributes: true, attributeOldValue: true });
+          confirmSoon.current = () => {
+            clearTimeout(confirmTimer);
+            dropIdle(confirmHandle);
+            confirmTimer = setTimeout(() => {
+              // Checking a larger document would block the editor for a moment.
+              // Those are checked when they are saved, searched or switched.
+              if (!alive || content.current.raw.length > confirmLimit) return;
+              confirmHandle = requestIdle(() => {
+                if (alive) commitRich(undefined, true, false);
+              });
+            }, confirmDelay);
+          };
           decorate();
+          reseedUndo.current();
           if (latest.current.mode === 'live') refreshFind();
           if (latest.current.mode === 'live' && pendingLiveFocus.current === content.current.id) instance.focus();
           pendingLiveFocus.current = null;
@@ -647,18 +779,30 @@ export function Editor({
       if (alive) setRichError(error.message);
     });
 
-    host.addEventListener('input', flush, true);
+    // The bubble phase follows Vditor's listeners on the editor element.
+    host.addEventListener('input', flush);
     host.addEventListener('beforeinput', editBeforeInput, true);
-    host.addEventListener('compositionend', flush, true);
+    host.addEventListener('compositionend', flush);
     host.addEventListener('keydown', editKeys, true);
     document.addEventListener('selectionchange', selectionChange);
     return () => {
       alive = false;
-      host.removeEventListener('input', flush, true);
+      host.removeEventListener('input', flush);
       host.removeEventListener('beforeinput', editBeforeInput, true);
-      host.removeEventListener('compositionend', flush, true);
+      host.removeEventListener('compositionend', flush);
       host.removeEventListener('keydown', editKeys, true);
       document.removeEventListener('selectionchange', selectionChange);
+      live.current?.dispose();
+      live.current = null;
+      liveObserver.current = null;
+      decorateSoon.current = null;
+      confirmSoon.current = null;
+      reseedUndo.current = null;
+      clearTimeout(reseedTimer);
+      liveServed.current = null;
+      clearTimeout(confirmTimer);
+      dropIdle(confirmHandle);
+      if (frame !== undefined) cancelAnimationFrame(frame);
       observer?.disconnect();
       tables?.disconnect();
       liveDetails.current?.dispose();
@@ -683,7 +827,7 @@ export function Editor({
         state.source = view.state;
         state.sourceScroll = { top: view.scrollDOM.scrollTop, left: view.scrollDOM.scrollLeft };
       }
-      if (richElement && previous.rich !== null) {
+      if (richElement && previous.synced) {
         state.live = { raw: previous.raw, caret: liveCaret.current, top: richElement.scrollTop, left: richElement.scrollLeft };
       }
       tabMemory.current.delete(previous.id);
@@ -713,15 +857,18 @@ export function Editor({
       } else {
         view.setState(EditorState.create({ doc: next, extensions: sourceExtensions(sourceUpdate, latest, wrapping.current, sourceSpelling.current) }));
       }
+      sourceRaw.current = next;
       view.scrollDOM.scrollTo(remembered?.sourceScroll ?? { top: 0, left: 0 });
-    } else if (view && view.state.doc.toString() !== next && (mode !== 'live' || changedText)) {
+    } else if (view && (mode !== 'live' || changedText) && sourceRaw.current !== next && view.state.doc.toString() !== next) {
+      // The hidden source view only follows changes it can show.
       view.dispatch({
         changes: { from: 0, to: view.state.doc.length, insert: next },
         annotations: [externalEdit.of(true), Transaction.addToHistory.of(false)],
       });
+      sourceRaw.current = next;
     }
 
-    if (mode === 'live' && (changedDocument || changedText || content.current.rich === null)) {
+    if (mode === 'live' && (changedDocument || changedText || !content.current.synced)) {
       syncRich();
       if (richElement && remembered?.live?.raw === value) {
         restoreCaret(richElement, remembered.live.caret);
@@ -731,7 +878,8 @@ export function Editor({
       }
     }
     if (mode !== 'live') {
-      content.current.rich = null;
+      content.current.synced = false;
+      content.current.md = null;
       if (activeCell.current) selectCell(null);
     }
     refreshFind();
@@ -959,7 +1107,7 @@ export function Editor({
   function replaceRendered(query, replacement, options) {
     const instance = rich.current;
     if (!instance || instance.vditor.ir.composingLock) return 0;
-    commitRich();
+    commitRich(undefined, true);
     const engine = instance.vditor;
     const clone = engine.ir.element.cloneNode(true);
     const { text, ranges } = visibleText(clone);
@@ -1043,7 +1191,7 @@ export function Editor({
       return editable.contains(range.startContainer) && editable.contains(range.endContainer) ? liveSelectionMarkdown(instance, range) : '';
     },
     getValue: () => {
-      commitRich();
+      commitRich(undefined, true);
       return content.current.raw;
     },
   }));
@@ -1187,7 +1335,7 @@ export function Editor({
   }
 
   function imageCollectionTarget(context, { source, element }) {
-    if (mode === 'live') commitRich();
+    if (mode === 'live') commitRich(undefined, true);
     const { raw } = content.current;
     if (mode !== 'live' && (renderedPreview.current?.docId !== docId || renderedPreview.current.value !== raw)) return null;
     const key = displayedImageKey(source);
@@ -1205,9 +1353,9 @@ export function Editor({
     if (!context.root.contains(element) || element.currentSrc !== address) throw new Error('图片已发生变化，请重新右击图片。');
     const result = await desktop.collectImage({ documentPath, source: address, alt, assetFolder: imageFolder });
     let keep = false;
-    try {
-      commitRich();
-      if (content.current.id !== context.docId || latest.current.mode !== context.mode ||
+      try {
+        commitRich(undefined, true);
+        if (content.current.id !== context.docId || latest.current.mode !== context.mode ||
           latest.current.documentPath !== documentPath || content.current.raw !== raw) {
         throw new Error('文档已发生变化，请重新右击图片。');
       }

@@ -195,7 +195,22 @@ export default function App() {
     return run(async () => {
       const path = await desktop.openFolder?.()
       if (!path) return
-      configure({ workspace: path })
+      // A pinned folder moves to the top once it is the workspace.
+      configure({ workspace: path, pinned: settings.pinned.filter(item => item !== path) })
+      setSidebar('files')
+      setRefresh(previous => previous + 1)
+      if (!settings.sidebar) configure({ sidebar: true })
+    })
+  }
+
+  // A folder added beside the workspace stays in view as a tree of its own.
+  function addFolder() {
+    return run(async () => {
+      const path = await desktop.openFolder?.()
+      if (!path) return
+      if (!settings.workspace) configure({ workspace: path })
+      else if (!settings.pinned.includes(path)) configure({ pinned: [...settings.pinned, path] })
+      setFolderToExpand({ path })
       setSidebar('files')
       setRefresh(previous => previous + 1)
       if (!settings.sidebar) configure({ sidebar: true })
@@ -552,6 +567,7 @@ export default function App() {
       case 'new-window': run(() => desktop.newWindow?.()); break
       case 'open-files': flushEditor(); run(workspace.openFiles); break
       case 'open-folder': openFolder(); break
+      case 'add-folder': addFolder(); break
       case 'save': case 'save-as': flushEditor(); if (active) run(() => workspace.save(active.id, { saveAs: key === 'save-as' })); break
       case 'review': openReview(active); break
       case 'undo-review': undoReview(); break
@@ -699,9 +715,15 @@ export default function App() {
   }, [context, run])
 
   function contextGroups(item) {
-    if (item.kind === 'directory') return [[...(desktop.createFile ? [['create-file', '新建文件…']] : []), ['mkdir', '新建子文件夹'],
-      settings.pinned.includes(item.path) ? ['unpin', '取消固定'] : ['pin', '固定文件夹']],
-      ...(item.path && desktop.gitWorkspaceStatus ? [[['git-workspace', 'Git 版本管理…']]] : []), fileActions]
+    if (item.kind === 'directory') {
+      const pinned = settings.pinned.includes(item.path)
+      const current = item.path === settings.workspace
+      return [[...(desktop.createFile ? [['create-file', '新建文件…']] : []), ['mkdir', '新建子文件夹'],
+        ...(pinned ? [['unpin', '取消固定']] : [['pin', '固定文件夹']]),
+        ...(pinned && !current ? [['set-workspace', '设为工作区']] : []),
+        ...(current && desktop.openFolder ? [['add-folder', '添加文件夹…']] : [])],
+        ...(item.path && desktop.gitWorkspaceStatus ? [[['git-workspace', 'Git 版本管理…']]] : []), fileActions]
+    }
     const documentActions = [['review', '审阅修订稿']]
     if (item.path && desktop.listGitDocumentHistory) documentActions.push(['git-document-history', 'Git 提交历史'])
     if (contextDoc?.reviewUndo && contextDoc.text === contextDoc.reviewUndo.after) documentActions.push(['undo-review', '撤销本次审阅'])
@@ -808,8 +830,18 @@ export default function App() {
     if (key === 'reveal') run(() => desktop.showItemInFolder(item.path))
     if (key === 'duplicate') run(async () => { await desktop.duplicatePath(item.path); setRefresh(previous => previous + 1) })
     if (key === 'undo') run(async () => { await desktop.undoFileOperation(); setRefresh(previous => previous + 1) })
-    if (key === 'pin' && !settings.pinned.includes(item.path)) configure({ pinned: [...settings.pinned, item.path] })
+    if (key === 'add-folder') addFolder()
+    if (key === 'pin' && !settings.pinned.includes(item.path)) {
+      configure({ pinned: [...settings.pinned, item.path] })
+      if (item.path === settings.workspace) notify('已固定。切换到其他工作区后，这个文件夹仍留在侧边栏。')
+    }
     if (key === 'unpin') configure({ pinned: settings.pinned.filter(path => path !== item.path) })
+    if (key === 'set-workspace' && item.path !== settings.workspace) {
+      // Search and new documents follow the workspace. The folders in view all stay.
+      configure(previous => ({ workspace: item.path,
+        pinned: [...previous.pinned.filter(path => path !== item.path), ...(previous.workspace && !previous.pinned.includes(previous.workspace) ? [previous.workspace] : [])] }))
+      setRefresh(previous => previous + 1)
+    }
   }
 
   async function createFileInFolder(folder, name) {
@@ -852,7 +884,7 @@ export default function App() {
     </header>
     <div className="workbench">
       {settings.sidebar && <Sidebar workspace={workspace} sidebar={sidebar} setSidebar={setSidebar} outline={outline}
-        jump={jump} openFolder={openFolder} searchFolder={() => action('search-folder')} refresh={refresh} folderToExpand={folderToExpand} notify={notify}
+        jump={jump} addFolder={addFolder} searchFolder={() => action('search-folder')} refresh={refresh} folderToExpand={folderToExpand} notify={notify}
         openRecovery={() => setDialog({ type: 'recovery' })} onContext={openContext}
         onOpenPath={openDocumentPath} onSelectDocument={selectDocument}/>}
       <main className="work-area" onDragOver={event => {

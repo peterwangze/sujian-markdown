@@ -154,24 +154,44 @@ try {
   const pinned = sidebar.locator('.sidebar-section').filter({
     has: page.getByRole('heading', { name: '固定文件夹', exact: true }),
   })
-  await pinned.getByRole('button', { name: path.basename(pinnedWorkspace), exact: true }).click()
+  const pinnedRoot = treeRow(path.basename(pinnedWorkspace))
+  // The workspace is pinned in this profile. It is shown once, at the top.
+  assert.equal(await pinned.getByRole('button', { name: path.basename(workspace), exact: true }).count(), 0)
+  assert.equal(await pinnedRoot.getAttribute('data-level'), '0')
+  assert.equal(await pinnedRoot.getAttribute('aria-expanded'), 'true')
+  assert.equal(await pinnedRoot.getAttribute('title'), pinnedWorkspace)
   await treeRow(pinnedNote).click()
   await tab(pinnedNote).waitFor()
-  const oldWorkspaceNote = '切换之后在原目录创建.md'
-  const oldWorkspacePath = path.join(workspace, oldWorkspaceNote)
-  await writeFile(oldWorkspacePath, '# 在切换后写入原工作区\n')
+  const workspaceNote = '固定之后在原工作区创建.md'
+  const workspaceNotePath = path.join(workspace, workspaceNote)
+  await writeFile(workspaceNotePath, '# 固定之后在原工作区创建\n')
+  await treeRow(workspaceNote).waitFor()
   await checkExternalFileChanges(pinnedWorkspace, '固定目录外部', 1)
-  assert.equal(await treeRow(oldWorkspaceNote).count(), 0)
-  assert.equal(await treeRow(path.basename(pinnedWorkspace)).getAttribute('aria-expanded'), 'true')
+  assert.equal(await pinnedRoot.getAttribute('aria-expanded'), 'true')
   assert.equal(await treeRow(pinnedNote).getAttribute('aria-current'), 'true')
   assert.equal(await tab(pinnedNote).getAttribute('aria-selected'), 'true')
 
-  await pinned.getByRole('button', { name: path.basename(workspace), exact: true }).click()
-  await treeRow(oldWorkspaceNote).waitFor()
+  // A pinned folder folds like any other, and the open document stays marked.
+  await pinnedRoot.click()
   await treeRow(pinnedNote).waitFor({ state: 'detached' })
-  await unlink(oldWorkspacePath)
-  await treeRow(oldWorkspaceNote).waitFor({ state: 'detached' })
-  console.log('Pinned workspace switching preserves current rows, isolates former-workspace events, and resumes updates when reopening the root.')
+  assert.equal(await pinnedRoot.getAttribute('aria-expanded'), 'false')
+  assert.equal(await tab(pinnedNote).getAttribute('aria-selected'), 'true')
+  await pinnedRoot.press('ArrowRight')
+  await treeRow(pinnedNote).waitFor()
+  assert.equal(await pinnedRoot.getAttribute('aria-expanded'), 'true')
+  await treeRow(pinnedNote).press('ArrowLeft')
+  // Left from a file moves to its folder, as in the rest of the tree.
+  assert.equal(await pinnedRoot.evaluate(row => row === document.activeElement), true)
+  assert.equal(await pinnedRoot.getAttribute('aria-expanded'), 'true')
+  await pinnedRoot.press('ArrowLeft')
+  assert.equal(await pinnedRoot.getAttribute('aria-expanded'), 'false')
+  await pinnedRoot.click()
+  await unlink(workspaceNotePath)
+  await treeRow(workspaceNote).waitFor({ state: 'detached' })
+  await pinned.getByRole('button', { name: '取消固定', exact: true }).click()
+  await pinned.waitFor({ state: 'hidden' })
+  await treeRow(pinnedNote).waitFor({ state: 'detached' })
+  console.log('Pinned folders are trees beside the workspace: both follow outside changes, fold by pointer and keyboard, and unpinning removes the tree.')
 } finally {
   await app.close()
 }

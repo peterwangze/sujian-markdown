@@ -92,6 +92,8 @@ Windows Electron 的即时、源码和分栏桌面回归已通过。测试使用
 | 跳转到行、搜索工作区 | `Mod+G`、`Mod+Shift+F` | 跳转按 Markdown 源码行号定位。工作区搜索跨文件，打开结果后定位到行。 |
 | 快速打开、命令面板 | `Mod+P`、`Mod+Shift+P` | 前者搜索打开、近期和工作区文件，后者搜索命令。均可用 `↑`、`↓`、`Enter` 执行，`Esc` 关闭。 |
 | 新建、打开文档、打开文件夹 | `Mod+N`、`Mod+O`、`Mod+Shift+O` | 新建打开草稿，打开文档支持文件选择，打开文件夹更换工作区。选中文件夹并打开上下文菜单，可在该目录直接新建文档。 |
+| 添加文件夹 | 待设置 | 把文件夹加到侧栏的 **固定文件夹**，和工作区并排显示，不更换工作区。还没有工作区时直接作为工作区打开。侧栏右上角的按钮和 **文档与视图** 菜单是同一入口。 |
+| 调整侧栏宽度 | 聚焦侧栏右缘后用 `←`、`→`、`Home`、`End`，加 `Shift` 走大步 | `←`、`→` 每次移动 16 px，按住 `Shift` 移动 64 px，`Home` 到最窄，`End` 到当前窗口给编辑区留出位置后的最宽。宽度随设置保存。鼠标可拖动右缘，双击恢复默认宽度。 |
 | 保存、另存为 | `Mod+S`、`Mod+Shift+S` | 保存时提交编辑区最新内容。无路径时选路径，另存为检查新文件内容。 |
 | 关闭、恢复标签 | `Mod+W`、`Mod+Shift+T` | 关闭当前文档标签，恢复最近关闭文档。有未保存内容时按保存提示处理。 |
 | 切换标签 | `Ctrl+Tab`、`Ctrl+Shift+Tab`，三平台均用 `Ctrl` | 多标签时沿标签顺序循环并恢复编辑焦点。标签本身聚焦时用 `←`、`→`、`Home`、`End` 和 `Delete` 导航或关闭。 |
@@ -109,7 +111,8 @@ Windows Electron 的即时、源码和分栏桌面回归已通过。测试使用
 | 焦点位置 | 按键 | 预期与检查点 |
 | --- | --- | --- |
 | 文件树和侧栏列表 | `↑`、`↓`、`Home`、`End`、`←`、`→`、`Enter`、`Space` | 上下与首尾键移动焦点，左右键折叠、展开或定位父子行，确认打开当前文档或展开文件夹。 |
-| 编辑区、文件树、标签 | `Shift+F10` 或菜单键 | 对当前焦点打开上下文菜单。正文有选区时优先提供剪切、复制与格式，光标位置优先提供插入和粘贴。文件夹菜单可在当前目录新建文档或进入 Git 版本管理。已保存的文档菜单可查看 Git 提交历史或收拢图片。 |
+| 编辑区、文件树、标签 | `Shift+F10` 或菜单键 | 对当前焦点打开上下文菜单。正文有选区时优先提供剪切、复制与格式，光标位置优先提供插入和粘贴。文件夹菜单可在当前目录新建文档或进入 Git 版本管理；固定的文件夹另有 **取消固定** 和 **设为工作区**。已保存的文档菜单可查看 Git 提交历史或收拢图片。 |
+| 侧栏右缘（分隔条） | `←`、`→`、`Shift+←/→`、`Home`、`End` | 按 **调整侧栏宽度** 一行的步长改变宽度，读屏软件读出新宽度。这些按键只在分隔条获得焦点时生效，不进入命令表，也不与自定义快捷键冲突。用 `Tab` 经过时分隔条可获得焦点。 |
 | 上下文菜单 | `↑`、`↓`、`Home`、`End`、`Enter`、`Space`、`Esc`、`Tab` | 导航并执行当前菜单项。`Esc` 关闭并还原触发点，正文场景也还原选区。`Tab` 关闭并继续焦点导航。 |
 | 工具栏菜单 | `↑`、`↓`、`Home`、`End`、`Enter`、`Space`、`Esc` | 焦点在触发按钮时可从首项或末项进入菜单。关闭后回到工具栏或执行动作后的编辑位置。 |
 | 弹窗与输入法 | `Tab`、`Shift+Tab`、`Enter`、`Esc` | 在弹窗中导航、确认、取消。中文输入法组字与候选确认期间，确认键和应用快捷键应把事件留给输入法。 |
@@ -141,6 +144,10 @@ Windows Electron 的即时、源码和分栏桌面回归已通过。测试使用
 | `Shift+Tab` 的各块行为与反向移焦点 | `npm run build` 后运行 `node scripts/check-shift-tab-desktop.mjs` |
 | 段首无序列表标记与字面边界 | `npm run build` 后运行 `node scripts/check-typed-lists-desktop.mjs` |
 | 全屏与新建窗口 | `npm run build` 后运行 `node scripts/check-window-interactions-desktop.mjs` |
+| 多个文件夹、侧栏宽度的鼠标与键盘操作 | `npm run build` 后运行 `node scripts/check-sidebar-folders-desktop.mjs` |
+| 文件树的键盘导航与固定文件夹 | `npm run build` 后运行 `node scripts/check-sidebar-tree-desktop.mjs` |
+| 长文档里的输入、撤销与重做 | `npm run build` 后运行 `node scripts/check-large-document-desktop.mjs` |
+| 撤销补丁与文档文本估价的单元检查 | `node --test src/editor/live-engine.test.js src/editor/live-model.test.js` |
 | 桌面文档基本流程 | `npm run test:desktop` |
 
 本轮 Windows Electron 已运行标签导航、文档查找、保存、工具菜单、表格移格与增行、围栏缩进与撤销、代码语言、即时与源码右键选区及焦点退出。源码结构与 Markdown 保存的九项单元检查通过。完整桌面证据及尚待执行的组合见 [桌面交互验收清单](desktop-interaction-acceptance.md)。发布核对时分别记录 macOS 和 Linux 安装包构建结果与原生键盘交互结果。

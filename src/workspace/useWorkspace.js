@@ -7,7 +7,7 @@ import { FONT_DEFAULTS } from './fonts.js'
 export const MAX_DOCUMENT_WIDTH = 1160
 
 export const defaults = {
-  theme: 'paper', mode: 'live', sidebar: true, fontSize: 17, lineHeight: 1.68, width: MAX_DOCUMENT_WIDTH, focusMode: false,
+  theme: 'paper', mode: 'live', sidebar: true, sidebarWidth: null, fontSize: 17, lineHeight: 1.68, width: MAX_DOCUMENT_WIDTH, focusMode: false,
   typewriter: false, proseSpellcheck: false, autoSave: false, resume: true, wrap: true,
   workspace: null, recent: [], pinned: [], openPaths: [], customCss: '', imageFolder: '',
   imageRoot: '', uploader: '', uploaderArgs: '', fileList: false, fileSort: 'name', showHidden: false, remoteMedia: false, hotkeys: {},

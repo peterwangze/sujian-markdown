@@ -106,8 +106,12 @@ try {
   await waitForCheck('Expected sort preference to persist', () =>
     page.evaluate(async () => (await window.sujian.loadPreferences()).fileSort === 'recent'))
   await button('切换文件树').click()
-  await context(tree('项目'), '固定文件夹')
+  // A pinned folder is a tree of its own beside the workspace.
+  await context(tree('检索样例'), '固定文件夹')
   await page.getByRole('heading', { name: '固定文件夹' }).waitFor()
+  const pinnedSection = page.locator('.sidebar-section').filter({ has: page.getByRole('heading', { name: '固定文件夹' }) })
+  assert.equal(await pinnedSection.locator('[data-level="0"]').getAttribute('title'), searchFolder)
+  await pinnedSection.locator('[data-level="1"]').waitFor()
 
   const search = modal('搜索工作区')
   const query = search.getByRole('textbox', { name: '工作区搜索文字' })
@@ -206,6 +210,7 @@ try {
   const pinned = page.locator('.sidebar-section').filter({ has: page.getByRole('heading', { name: '固定文件夹' }) })
   await button('取消固定', pinned).click()
   await pinned.waitFor({ state: 'hidden' })
+  assert.equal(await page.locator('[data-sidebar-row]').filter({ hasText: '检索样例' }).count(), 1)
 
   await tab('已重命名.md').click()
   await app.evaluate(({ dialog }) => {

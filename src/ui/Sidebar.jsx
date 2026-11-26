@@ -1,11 +1,18 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { ChevronDown, ChevronRight, FileText, Folder, FolderOpen, List, FolderSearch, RotateCcw, Pin, FolderPlus, MoreHorizontal, ArrowUpDown } from 'lucide-react'
+import { ChevronDown, ChevronRight, FileText, Folder, FolderOpen, List, FolderSearch, RotateCcw, FolderPlus, MoreHorizontal, ArrowUpDown } from 'lucide-react'
 import { desktop, native } from '../workspace/desktop.js'
 import { isComposingKey } from '../workspace/commands.js'
 import { IconButton } from './Controls.jsx'
 import { documentContextEvents } from './DocumentContextMenu.jsx'
 
 function pathTail(path) { return path?.split(/[\\/]/).filter(Boolean).at(-1) ?? '' }
+
+function toggleMember(set, value) {
+  const next = new Set(set)
+  if (next.has(value)) next.delete(value)
+  else next.add(value)
+  return next
+}
 
 function navigateRows(event) {
   if (isComposingKey(event.nativeEvent) || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return
@@ -114,11 +121,45 @@ function FileTree({ path, level, expanded, settings, refresh, watchDirectory, fo
   })
 }
 
-export function Sidebar({ workspace, sidebar, setSidebar, outline, jump, openFolder, searchFolder, refresh, folderToExpand, notify,
+const minSidebar = 150;
+const maxSidebar = 640;
+// The editor keeps this much room, whatever width was chosen.
+const editorRoom = 480;
+
+function useViewport() {
+  const [width, setWidth] = useState(() => window.innerWidth)
+  useEffect(() => {
+    let frame = 0
+    const resize = () => {
+      cancelAnimationFrame(frame)
+      frame = requestAnimationFrame(() => setWidth(window.innerWidth))
+    }
+    window.addEventListener('resize', resize)
+    return () => {
+      cancelAnimationFrame(frame)
+      window.removeEventListener('resize', resize)
+    }
+  }, [])
+  return width
+}
+
+export function Sidebar({ workspace, sidebar, setSidebar, outline, jump, addFolder, searchFolder, refresh, folderToExpand, notify,
   onContext, onOpenPath, onSelectDocument, openRecovery }) {
   const { active, docs, settings, configure, recoverable } = workspace
   const [rootOpen, setRootOpen] = useState(true)
   const [collapsed, setCollapsed] = useState(new Set())
+  const [folded, setFolded] = useState(new Set())
+  const expandedRequest = useRef(null)
+  const aside = useRef(null)
+  const grip = useRef(null)
+  const drag = useRef(null)
+  const viewport = useViewport()
+  const widest = Math.max(minSidebar, Math.min(maxSidebar, viewport - editorRoom))
+  const fit = (width) => Math.max(minSidebar, Math.min(widest, width))
+  // Without a chosen width the sidebar is as wide as the style sheet says for this window size.
+  const width = settings.sidebarWidth ? Math.min(settings.sidebarWidth, widest) : viewport > 1170 ? 230 : viewport > 960 ? 202 : 172
+  // Pinned folders are trees of their own. The workspace is already at the top.
+  const pinned = settings.pinned.filter(path => path !== settings.workspace)
   const directorySubscriptions = useRef(new Map())
   const directorySyncScheduled = useRef(false)
   const syncDirectorySubscriptions = useCallback(() => {
@@ -146,6 +187,17 @@ export function Sidebar({ workspace, sidebar, setSidebar, outline, jump, openFol
   }), [])
   useEffect(() => { setRootOpen(true) }, [settings.workspace])
   useEffect(() => { if (folderToExpand?.path === settings.workspace) setRootOpen(true) }, [folderToExpand, settings.workspace])
+  useEffect(() => {
+    const path = folderToExpand?.path
+    if (!path || expandedRequest.current === folderToExpand) return
+    expandedRequest.current = folderToExpand
+    setFolded(previous => {
+      if (!previous.has(path)) return previous
+      const next = new Set(previous)
+      next.delete(path)
+      return next
+    })
+  }, [folderToExpand])
   useEffect(() => { setCollapsed(new Set()) }, [active?.id])
   const visibleOutline = useMemo(() => {
     const visible = []
@@ -158,11 +210,60 @@ export function Sidebar({ workspace, sidebar, setSidebar, outline, jump, openFol
     }
     return visible
   }, [outline, collapsed])
-  return <aside className="sidebar" aria-label="文件与大纲">
+  const current = () => Math.round(aside.current.getBoundingClientRect().width)
+  // The move is followed on the window, so it goes on wherever the pointer is.
+  function startResize(event) {
+    if (event.button !== 0) return
+    event.preventDefault()
+    const left = aside.current.getBoundingClientRect().left
+    const offset = event.clientX - aside.current.getBoundingClientRect().right
+    let width = current()
+    document.documentElement.classList.add('resizing-sidebar')
+    const move = (moved) => {
+      // After a layout change Chromium asks what lies under the pointer. That move may carry no pressed button.
+      if (!(moved.buttons & 1) || !aside.current) return
+      width = fit(Math.round(moved.clientX - offset - left))
+      aside.current.style.setProperty('--sidebar-width', width + 'px')
+      grip.current.setAttribute('aria-valuenow', String(width))
+    }
+    const stop = () => {
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', stop)
+      window.removeEventListener('pointercancel', stop)
+      window.removeEventListener('blur', stop)
+      document.documentElement.classList.remove('resizing-sidebar')
+      drag.current = null
+      if (width !== settings.sidebarWidth) configure({ sidebarWidth: width })
+    }
+    drag.current = stop
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', stop)
+    window.addEventListener('pointercancel', stop)
+    window.addEventListener('blur', stop)
+  }
+  useEffect(() => () => drag.current?.(), [])
+  function resizeByKey(event) {
+    if (isComposingKey(event.nativeEvent) || event.altKey || event.ctrlKey || event.metaKey) return
+    const step = event.shiftKey ? 64 : 16
+    let next
+    switch (event.key) {
+      case 'ArrowLeft': next = current() - step; break
+      case 'ArrowRight': next = current() + step; break
+      case 'Home': next = minSidebar; break
+      case 'End': next = widest; break
+      default: return
+    }
+    event.preventDefault()
+    event.stopPropagation()
+    configure({ sidebarWidth: fit(next) })
+  }
+  const unpin = (path) => configure({ pinned: settings.pinned.filter(item => item !== path) })
+  return <aside ref={aside} className="sidebar" aria-label="文件与大纲"
+    style={settings.sidebarWidth ? { '--sidebar-width': width + 'px' } : undefined}>
     <div className="sidebar-tabs">
       <button className={sidebar === 'files' ? 'selected' : ''} aria-pressed={sidebar === 'files'} onClick={() => setSidebar('files')}>文件</button>
       <button className={sidebar === 'outline' ? 'selected' : ''} aria-pressed={sidebar === 'outline'} onClick={() => setSidebar('outline')}>大纲</button>
-      {sidebar === 'files' && <IconButton icon={FolderPlus} label="打开文件夹" disabled={!native} onClick={openFolder}/>}
+      {sidebar === 'files' && <IconButton icon={FolderPlus} label={settings.workspace ? '添加文件夹' : '打开文件夹'} disabled={!native} onClick={addFolder}/>}
     </div>
     <div className="sidebar-content" onKeyDown={navigateRows}>
       {sidebar === 'outline' ? (
@@ -200,13 +301,24 @@ export function Sidebar({ workspace, sidebar, setSidebar, outline, jump, openFol
             {...documentContextEvents({ kind: 'file', id: doc.id, path: doc.path, name: doc.name }, onContext)}>
             <span className="tree-disclosure-space" aria-hidden="true"/><FileText size={16}/><span>{doc.name}</span>
           </button>)}
-        {settings.pinned.length > 0 && <section className="sidebar-section">
+        {pinned.length > 0 && <section className="sidebar-section">
           <h3>固定文件夹</h3>
-          {settings.pinned.map(path => <div className="sidebar-split-row" key={path}>
-            <button className="tree-row" data-sidebar-row title={path} onClick={() => configure({ workspace: path })}
-              {...documentContextEvents({ kind: 'directory', path, name: pathTail(path) }, onContext)}><Pin size={14}/><span>{pathTail(path)}</span></button>
-            <IconButton icon={MoreHorizontal} label="取消固定" onClick={() => configure({ pinned: settings.pinned.filter(item => item !== path) })}/>
-          </div>)}
+          {pinned.map(path => {
+            const open = !folded.has(path)
+            return <div key={path}>
+              <div className="sidebar-split-row">
+                <button className="tree-row sidebar-folder" data-sidebar-row data-level="0" aria-expanded={open} title={path}
+                  onClick={() => setFolded(previous => toggleMember(previous, path))}
+                  {...documentContextEvents({ kind: 'directory', path, name: pathTail(path) }, onContext)}>
+                  {open ? <ChevronDown size={13}/> : <ChevronRight size={13}/>}<FolderOpen size={16}/><span>{pathTail(path)}</span>
+                </button>
+                <IconButton icon={MoreHorizontal} label="取消固定" onClick={() => unpin(path)}/>
+              </div>
+              {open && <FileTree key={path} path={path} level={0} expanded settings={settings}
+                refresh={refresh} watchDirectory={watchDirectory} folderToExpand={folderToExpand} active={active}
+                onOpen={onOpenPath} onContext={onContext} notify={notify}/>}
+            </div>
+          })}
         </section>}
         {settings.recent.length > 0 && <section className="sidebar-section">
           <h3>最近打开</h3>
@@ -217,5 +329,8 @@ export function Sidebar({ workspace, sidebar, setSidebar, outline, jump, openFol
       </>}
     </div>
     {recoverable.length > 0 && <button className="sidebar-recover" onClick={openRecovery}><RotateCcw size={16}/> 恢复草稿 <span>{recoverable.length}</span></button>}
+    <div ref={grip} className="sidebar-resize" role="separator" aria-orientation="vertical" tabIndex={0} aria-label="调整侧边栏宽度"
+      aria-valuemin={minSidebar} aria-valuemax={widest} aria-valuenow={width} title="拖动调整宽度，双击恢复默认"
+      onPointerDown={startResize} onKeyDown={resizeByKey} onDoubleClick={() => configure({ sidebarWidth: null })}/>
   </aside>
 }

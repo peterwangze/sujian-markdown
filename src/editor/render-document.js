@@ -48,6 +48,17 @@ export function loadVendorScript(id, file) {
   return promise;
 }
 
+// Starting the code highlighter takes about as long as opening a large
+// document. It is started once while nothing else is going on, so that the
+// first document with code does not wait for it.
+export function warmUpCodeHighlight() {
+  // The editor may be loading its own copy already.
+  if (document.querySelector('script[src*="highlight.min.js"]')) return;
+  return loadVendorScript('vditorHljsScript', 'highlight.js/highlight.min.js')
+    .then(() => loadVendorScript('vditorHljsThirdScript', 'highlight.js/third-languages.js'))
+    .catch(() => {});
+}
+
 function installMathStyles() {
   if (document.getElementById('vditorKatexStyle')) return;
   const link = document.createElement('link');

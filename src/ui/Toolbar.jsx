@@ -1,6 +1,6 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
 import { Bold, Italic, List, ListOrdered, Table2, Link, Search, Settings2, ChevronDown,
-  PanelLeft, MoreHorizontal, FileText, FolderOpen, Save, FileOutput, FileInput, Image,
+  PanelLeft, MoreHorizontal, FileText, FolderOpen, FolderPlus, Save, FileOutput, FileInput, Image,
   Code, Quote, Minus, SquareCheck, Strikethrough, Sigma, Network, Focus, Maximize, Undo2, Redo2, Keyboard,
   Columns2, BookOpen, Copy, Pin, Printer, Moon, FileDiff, ClipboardCheck, Command } from 'lucide-react'
 import { commandsById, displayShortcut, effectiveShortcut, headingCommands, isComposingKey } from '../workspace/commands.js'
@@ -155,7 +155,8 @@ export function Toolbar({ active, mode, setMode, action, command, settings, nati
         act('阅读模式', BookOpen, 'view-read', !active), act('分栏预览', Columns2, 'view-split', !active),
         act('侧栏', PanelLeft, 'toggle-sidebar'), act('专注模式', Focus, 'toggle-focus'),
         act('打字机模式', FileText, 'toggle-typewriter'), act('全屏', Maximize, 'fullscreen'),
-        act('切换深色模式', Moon, 'toggle-dark'), act('固定当前文件夹', Pin, 'pin-folder', !settings.workspace),
+        act('切换深色模式', Moon, 'toggle-dark'), act('添加文件夹', FolderPlus, 'add-folder', !native),
+        act('固定当前文件夹', Pin, 'pin-folder', !settings.workspace),
         act('快捷键', Keyboard, 'shortcuts'),
       ]}/>
     </div>

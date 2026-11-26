@@ -13,6 +13,8 @@ const suites = [
   'check-workspace-interactions-desktop',
   'check-document-find-desktop',
   'check-sidebar-tree-desktop',
+  'check-sidebar-folders-desktop',
+  'check-large-document-desktop',
   'check-window-interactions-desktop',
   'check-settings-desktop',
   'check-updates-desktop',

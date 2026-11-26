@@ -43,16 +43,19 @@
 | --- | --- | --- |
 | `FS-01` 新建、打开、保存、另存 | 用按钮和快捷键新建草稿、打开本地 Markdown 和多个文件。写入不同文本，保存后核对文件。分别确认和取消保存对话框，再另存一份。 | 打开、关闭、恢复、保存、取消和另存已通过 `check-editing-shortcuts-desktop.mjs`、`check-workspace-interactions-desktop.mjs`。 |
 | `FS-02` 目录与文件上下文 | 在根目录、子文件夹和固定目录用右键或 `Shift+F10` 新建文件。输入含空格的名称、已有文件名和非法路径，核对文件系统和标签。另测新建子目录、重命名、移动、复制、移至回收站与撤销。 | 已通过 `check-file-creation-desktop.mjs`、`check-workspace-interactions-desktop.mjs`，包括同名保护、移至回收站取消和确认、复制后撤销。 |
-| `FS-03` 标签栏与工作区导航 | 打开多份文档，使用左右、`Home`、`End`、`Delete` 及 `Ctrl+Tab`。切换文件树、平铺列表、近期记录和大纲。验证隐藏文件、排序、固定和取消固定。 | 标签切换、键盘关闭、文件树焦点、平铺列表、排序、固定和取消固定已通过。见 `usability-smoke.mjs`、`check-workspace-interactions-desktop.mjs`。 |
+| `FS-03` 标签栏与工作区导航 | 打开多份文档，使用左右、`Home`、`End`、`Delete` 及 `Ctrl+Tab`。切换文件树、平铺列表、近期记录和大纲。验证隐藏文件、排序、固定和取消固定。 | 标签切换、键盘关闭、文件树焦点、平铺列表、排序、固定和取消固定已通过。见 `usability-smoke.mjs`、`check-workspace-interactions-desktop.mjs`。固定的文件夹各成一棵树，见 `FS-13`。 |
 | `FS-04` 恢复与外部文件变化 | 在临时工作区写未保存内容后关闭、恢复或删除草稿。修改正在编辑的磁盘文件，分别对照、重载、另存或取消。 | 已通过崩溃恢复、取消关闭、放弃更改、草稿删除确认与取消、磁盘冲突预览、重载、确认覆盖和保留两份内容的另存副本。见 `check-workspace-interactions-desktop.mjs`。 |
 | `FS-05` 文档图片与拖入 | 粘贴带文件路径的图片、路径文本、HTML 图片地址及纯像素。测试拖入、工具栏选图、未保存草稿和无效路径。比较 Markdown、实际图片文件与资源目录。另测代码及只读区。 | Windows 即时、源码与分栏验证了优先引用原图，有效地址跳过位图读取。无可用地址时写入字节相同的副本。已覆盖草稿保存、原图重开与自定义目录。见 `check-image-paste-desktop.mjs`、`check-file-creation-desktop.mjs`、`check-settings-desktop.mjs`。 |
 | `FS-06` 多文件和本机入口 | 从文件对话框选择多份支持文档。用文件菜单、侧栏最近打开、标签右键、打开文件位置及窗口切换分别定位同一份文档。当前标签与重复打开策略符合预期。 | 单文件打开、标签恢复和双窗口已通过。文件管理器显示位置及本机多选、拖入待实测。 |
-| `FS-07` 文件内容与大文档 | 用 UTF-8 BOM、带 BOM UTF-16、CRLF、混合换行、无末尾换行、中文长路径样例保存重开。大文档首次用源码打开，切换即时编辑时有确认，滚动与查找可到文件末尾。 | 文件层覆盖编码、换行、末尾、并发和外部变化。历史浏览器证据包含约 16 万词文档查找。见 `electron/documents.test.cjs` 和 [当前兼容记录](compatibility.md#当前验收记录)。 |
+| `FS-07` 文件内容与大文档 | 用 UTF-8 BOM、带 BOM UTF-16、CRLF、混合换行、无末尾换行、中文长路径样例保存重开。超过 20 万字符的文档首次用源码打开，切换即时编辑时有确认，滚动与查找可到文件末尾。20 万字符以内的文档在即时编辑中打开和输入，见 `FS-15`。 | 文件层覆盖编码、换行、末尾、并发和外部变化。历史浏览器证据包含约 16 万词文档查找。见 `electron/documents.test.cjs` 和 [当前兼容记录](compatibility.md#当前验收记录)。 |
 | `FS-08` 图片根路径与外部上传 | 用 `/` 开头的本地图片测试图片根路径。配置本机测试上传器和每行参数，测试缺配置、无待上传、确认及取消、成功替换本地引用和上传失败。用无标题草稿验证资源落在应用目录，首次另存后核对原引用。 | 已实测 `FS-05` 的资源路径。上传器、图片根路径及未命名草稿图片的桌面组合待实测。 |
 | `FS-09` 文件树末级文档的缩进 | 展开含多级目录、同层目录和文档的工作区。缩小窗口后查看深层长文件名，用方向键导航并右击末级文档打开。切换平铺列表对照。 | Windows 已验证同层图标和标题对齐、子层继续右移、窄侧栏横向滚动、键盘导航与右击目标。见 `check-sidebar-tree-desktop.mjs`。 |
 | `FS-10` 一次收拢整篇文档的图片 | 在文件树右击后台文档，选 **收拢图片到文档资源目录**。覆盖同一图片的相对路径、绝对路径、文件 URI、引用式写法和 HTML，另测同名不同图片、网络图和失效引用。保存后在标签上用 `Shift+F10` 重复执行。取消一项仍在等待网络图的操作。关闭应用，把 Markdown 与资源目录一起移至不同目录层级，移除原图，关闭网络图片并重开。 | Windows 已实测复制 3 张原图、更新 8 处引用并报告失效地址，后台操作未切换前台文档。重复收拢未产生副本，取消后本次副本已清理。移走文档和资源目录后，9 张有效图片在即时、分栏和阅读中均解码成功，网络请求为零。见 `check-image-batch-collection-desktop.mjs`。 |
 | `FS-11` 初始化和提交 Git 工作区 | 从工作区根目录右击、从独立子目录用 `Shift+F10` 打开 **Git 版本管理**，初始化并核对对应仓库。准备跟踪文件、新文件和被忽略文件，在提交说明中输入内容。先检查未配置身份、未保存文档和上级仓库内子目录，再保存后刷新、提交并核对 Git 日志与工作树。将独立仓库打开为工作区。继续编辑，点击 **比较当前文档与 HEAD**。 | Windows 已使用真实 Git 验证初始化、两次本地提交、忽略规则、身份检查、未保存文档和 HEAD 审阅。待提交变更发生变化时刷新清单，失败提交保留原暂存状态，由 `electron/git-workspace.test.cjs` 验证。复测 `check-git-workspace-desktop.mjs`。 |
-| `FS-12` 工作区自动刷新 | 在应用外新建、改名和删除 Markdown 文件，分别检查工作区根目录、已展开的深层子目录和文档平铺列表。切换到固定文件夹后重复，返回原工作区检查切换期间新增的文档。 | Windows 实测列表自动更新，保留展开状态、文件焦点与当前标签。平铺列表能显示未展开子目录中的变化。复测 `node scripts/check-sidebar-tree-desktop.mjs`。目录重建及递归监听的轮询回退另有后端测试。 |
+| `FS-12` 工作区自动刷新 | 在应用外新建、改名和删除 Markdown 文件，分别检查工作区根目录、已展开的深层子目录和文档平铺列表。在固定的文件夹的文件树里重复，返回原工作区检查切换期间新增的文档。 | Windows 实测列表自动更新，保留展开状态、文件焦点与当前标签。平铺列表能显示未展开子目录中的变化。固定的文件夹同样跟随外部变化。复测 `node scripts/check-sidebar-tree-desktop.mjs`、`node scripts/check-sidebar-folders-desktop.mjs`。目录重建及递归监听的轮询回退另有后端测试。 |
+| `FS-13` 多个文件夹同时显示 | 准备一个工作区和一个固定文件夹后打开应用，核对两棵树。分别从两棵树打开文档；在应用外于固定文件夹中新建、改名和删除文件。右击固定文件夹的根目录，选 **设为工作区**、**取消固定**、**新建文件** 和 **新建子文件夹**。从 **文档与视图 → 添加文件夹** 和侧栏右上角的按钮各添加一个文件夹，重复添加同一个。在工作区内右击子文件夹选 **固定文件夹**，再 **取消固定**。关闭应用重启。 | 工作区和每个固定的文件夹各是一棵展开的树，同层条目对齐。打开的文档在它所在的树里标记为当前文档。固定的文件夹跟随外部变化。**设为工作区** 把它移到最上面，原工作区成为一棵固定的树，两者都写入设置。**添加文件夹** 不更换工作区，重复添加不出现第二棵树。取消固定移除整棵树及其中的文件，并保存设置。工作区搜索和快速打开仍只覆盖当前工作区。 | Windows Electron 实测通过。见 `check-sidebar-folders-desktop.mjs`、`check-sidebar-tree-desktop.mjs`、`check-workspace-interactions-desktop.mjs`。 |
+| `FS-14` 调整侧栏宽度 | 拖动侧栏右缘到新宽度后松开，重启应用。把指针移到分隔条上但不按键。用 `Tab` 聚焦分隔条，按 `←`、`→`、`Shift+←/→`、`Home`、`End`。把窗口缩到 900 px 宽，再放宽，最后双击分隔条。 | 拖动时宽度跟随指针，范围是 150 至 640 px，并给编辑区留出 480 px。松开后写入设置，重启恢复原宽度。未按键的指针移动不改变宽度。键盘每次移动 16 px，按住 `Shift` 移动 64 px，`Home` 到最窄，`End` 到当前窗口允许的最宽，读屏读数随之更新。窄窗口把侧栏限制到 420 px，放宽后恢复所选宽度。双击恢复默认宽度并清除保存的值。 | Windows Electron 实测通过，见 `check-sidebar-folders-desktop.mjs`。[键盘说明](shortcut-acceptance.md#查找文件标签和视图) |
+| `FS-15` 长文档的打开、输入与撤销 | 打开一份约 15 万字符、含标题、中英混排段落、列表、表格和代码块的文档。在第 100 段末尾输入字符、回车和退格，撤销一次并重做，再到文末输入，保存后与原文逐字比对，重启后核对。另开一份约 26 万字符的文档，在文末输入并保存。 | 15 万字符的文档在即时编辑中打开，从点击到显示约 1 秒以内。输入、撤销和重做的每次按键到下一帧远低于 1.5 秒，普通按键的中位数在 0.1 秒左右。保存的文件与原文只差输入的内容。超过 20 万字符的文档以源码模式打开，可直接输入。 | Windows Electron 实测：15 万字符约 1 秒打开，普通按键中位 72 至 112 毫秒，撤销和重做 296 至 512 毫秒；26 万字符在源码模式 0.24 秒打开。对照 1.4.22，15 万字符文档每键约 3.9 秒，3 万字符每键约 0.27 秒。见 `check-large-document-desktop.mjs`、`src/editor/live-engine.test.js`、`src/editor/live-model.test.js`。 |
 
 ## 查找、定位、命令与焦点
 
@@ -154,7 +157,7 @@
 | --- | --- |
 | 单元检查与基础桌面流程 | `npm test`、`npm run test:desktop` |
 | 编辑与指针 | `node scripts/check-heading-shortcuts-desktop.mjs`、`node scripts/check-editing-shortcuts-desktop.mjs`、`node scripts/check-editor-pointer-desktop.mjs`、`node scripts/check-shift-tab-desktop.mjs`、`node scripts/check-typed-lists-desktop.mjs`、`node scripts/check-source-formatting-desktop.mjs`、`node scripts/check-live-inline-desktop.mjs` |
-| 文件与工作区 | `node scripts/check-file-creation-desktop.mjs`、`node scripts/check-workspace-interactions-desktop.mjs` |
+| 文件与工作区 | `node scripts/check-file-creation-desktop.mjs`、`node scripts/check-workspace-interactions-desktop.mjs`、`node scripts/check-sidebar-tree-desktop.mjs`、`node scripts/check-sidebar-folders-desktop.mjs`、`node scripts/check-large-document-desktop.mjs` |
 | 设置、窗口与拼写检查 | `node scripts/check-settings-desktop.mjs`、`node scripts/check-window-interactions-desktop.mjs`、`node scripts/check-spellcheck-desktop.mjs` |
 | Markdown、HTML、审阅与交付 | `node scripts/check-markdown-desktop.mjs`、`node scripts/check-html-desktop.mjs`、`node scripts/check-review-workflows-desktop.mjs`、`node scripts/check-delivery-desktop.mjs` |
 | Git 文档历史与恢复 | `node scripts/check-git-document-history-desktop.mjs` |

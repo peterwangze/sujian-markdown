@@ -102,7 +102,9 @@ async function openWorkspace(directory, name) {
   await app.evaluate(({ dialog }, target) => {
     dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [target] })
   }, directory)
-  await button('打开文件夹').click()
+  // "打开文件夹" replaces the workspace. The sidebar's button adds a folder beside it.
+  await button('文档与视图').click()
+  await button('打开文件夹', page.locator('.tool-menu-list')).click()
   await folder(name).waitFor()
 }
 
