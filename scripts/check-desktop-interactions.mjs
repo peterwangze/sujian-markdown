@@ -11,6 +11,7 @@ const suites = [
   'check-typed-lists-desktop',
   'check-file-creation-desktop',
   'check-workspace-interactions-desktop',
+  'check-outline-desktop',
   'check-document-find-desktop',
   'check-sidebar-tree-desktop',
   'check-sidebar-folders-desktop',

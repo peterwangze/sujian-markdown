@@ -100,6 +100,27 @@ test('any edit undoes and redoes exactly', () => {
   assert.equal(beyondTheLibrary, 0);
 });
 
+test('a redo in a document that repeats itself puts each change back in its own place', () => {
+  // Around two equal changes in equal surroundings, the reading for undo seems to fit the redo as well.
+  for (const [unit, places, added] of [
+    ['a', [100, 200], ['x', 'x']],
+    ['| a | b |\n', [33, 66], ['| a | b |\n', '| a | b |\n']],
+  ]) {
+    const before = unit.repeat(Math.ceil(400 / unit.length));
+    let after = before;
+    for (const [index, from] of [...places.entries()].sort((left, right) => right[1] - left[1])) {
+      after = after.slice(0, from) + added[index] + after.slice(from);
+    }
+    const dmp = engine();
+    exactOnly(dmp);
+    const result = roundTrip(dmp, after, before);
+    assert.equal(result.patches.length, 2);
+    assert.ok(result.undoResults.every(Boolean) && result.redoResults.every(Boolean));
+    assert.equal(result.undone, before);
+    assert.equal(result.redone, after);
+  }
+});
+
 test('a keystroke in a large repetitive document makes one small patch', () => {
   const before = paragraph('这是第 100 段用于性能测试的中文正文，包含 English words、数字 7919 与标点。').repeat(2400);
   const at = before.length / 2 + 30;

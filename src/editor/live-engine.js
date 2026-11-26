@@ -98,51 +98,61 @@ function withContext(behind, ahead, patch) {
 // and the library applies the patches.
 //
 // A place is counted with the patches before it in the document applied.
-// Undo starts from the newer text and needs those patches to move it; redo
-// is given the patches inverted and reversed, starting from the older text,
-// where each lies at its place already.
+// Undo goes along the document, starting from the newer text, and needs those
+// patches to move it. Redo comes back the other way, starting from the older
+// text, where each lies at its place already. Where the text repeats itself
+// the other reading can seem to fit as well, so the order of the list decides
+// which is tried first.
 function appliedExactly(dmp, patches, text) {
-  if (patches.length > 5000) return null;
   const list = patches.map((patch) => ({
     at: patch.start2,
     pattern: dmp.diff_text1(patch.diffs),
     replacement: dmp.diff_text2(patch.diffs),
   }));
-  let spans = null;
-  for (const undo of [true, false]) {
-    const found = [];
-    let whole = true;
+  // What the patches change in length, in the order of the places they end.
+  const ends = list.map((item) => [item.at + item.replacement.length, item.replacement.length - item.pattern.length])
+    .sort((left, right) => left[0] - right[0]);
+  const sums = [0];
+  for (const [, change] of ends) sums.push(sums.at(-1) + change);
+  // The change in length made by the patches that end at or before a place.
+  const moved = (at) => {
+    let low = 0;
+    let high = ends.length;
+    while (low < high) {
+      const middle = (low + high) >> 1;
+      if (ends[middle][0] <= at) low = middle + 1;
+      else high = middle;
+    }
+    return sums[low];
+  };
+  const applied = (undo) => {
+    const spans = [];
     for (const item of list) {
-      let shift = 0;
-      for (const other of list) {
-        if (undo && other !== item && other.at + other.replacement.length <= item.at) {
-          shift += other.replacement.length - other.pattern.length;
-        }
-      }
-      const from = item.at - shift;
-      if (from < 0 || !text.startsWith(item.pattern, from)) {
-        whole = false;
-        break;
-      }
-      found.push([from, item.pattern.length, item.replacement]);
+      // A patch does not come before itself, though an empty replacement ends where it starts.
+      const own = item.replacement.length === 0 ? item.pattern.length : 0;
+      const from = item.at - (undo ? moved(item.at) + own : 0);
+      if (from < 0 || !text.startsWith(item.pattern, from)) return null;
+      spans.push([from, item.pattern.length, item.replacement]);
     }
-    if (whole) {
-      spans = found;
-      break;
+    spans.sort((left, right) => left[0] - right[0]);
+    const result = [];
+    let copied = 0;
+    for (const [from, length, replacement] of spans) {
+      // No two patches stand on the same text.
+      if (from < copied) return null;
+      result.push(text.slice(copied, from), replacement);
+      copied = from + length;
     }
+    result.push(text.slice(copied));
+    return result.join('');
+  };
+  // Redo lists the patches the other way round along the document.
+  const backward = list.length > 1 && list.at(-1).at < list[0].at;
+  for (const undo of backward ? [false, true] : [true, false]) {
+    const result = applied(undo);
+    if (result !== null) return [result, patches.map(() => true)];
   }
-  if (!spans) return null;
-  spans.sort((left, right) => left[0] - right[0]);
-  const result = [];
-  let copied = 0;
-  for (const [from, length, replacement] of spans) {
-    // No two patches stand on the same text.
-    if (from < copied) return null;
-    result.push(text.slice(copied, from), replacement);
-    copied = from + length;
-  }
-  result.push(text.slice(copied));
-  return [result.join(''), patches.map(() => true)];
+  return null;
 }
 
 // Vditor records each undo step as the editor HTML with a marker at the

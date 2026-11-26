@@ -63,7 +63,7 @@
 | --- | --- | --- |
 | `NAV-01` 文档查找 | 在即时、源码、分栏和阅读中查找同一份含标题、表格、列表、行内格式及代码的文档。输入时核对高亮和计数，用回车、反向回车、`F3`、`Shift+F3` 循环跳转。切换标签后验证计数更新。清空或按 `Esc` 后，匹配标记应撤下。 | Windows 实测四种模式、选区预填、标签切换与清理。即时和阅读能匹配跨行内格式的连续文字，阅读跳到远处匹配时搜索框保留焦点。分栏按左侧源码计数与定位，右侧标出可见文字。复测 `node scripts/check-document-find-desktop.mjs`。 |
 | `NAV-02` 文档替换与工作区搜索 | 用大小写、全词、正则切换匹配条件，测试替换一处、全部和非法正则。在两份文件中加入同一行多次命中，核对结果摘要高亮、总数、行数和所打开的文档。 | Windows 实测两种替换范围及落盘结果。工作区正则命中 2 行 3 处，结果摘要标出 3 处，并在源码和即时模式跳到目标行。复测 `node scripts/check-workspace-interactions-desktop.mjs`。即时替换可见匹配后重新读盘，原链接地址仍保留。见 `check-document-find-desktop.mjs`。 |
-| `NAV-03` 快速打开、命令面板、行跳转、大纲 | 分别检索文件和动作，通过方向键选择。用明确行号定位，选择大纲里的中文及重复标题，测试大纲折叠。 | 快速打开、命令面板、行跳转、大纲折叠与跳转已通过。见本地 `usability-smoke.mjs` 和 `check-workspace-interactions-desktop.mjs`。 |
+| `NAV-03` 快速打开、命令面板、行跳转、大纲 | 分别检索文件和动作，通过方向键选择。用明确行号定位，选择大纲里的中文及重复标题，测试大纲折叠。打开以 `---` 包住 YAML 元数据的文档，在即时和源码模式核对大纲并点选条目，删去结尾的 `---` 再补回。 | 快速打开、命令面板、行跳转、大纲折叠与跳转已通过。见本地 `usability-smoke.mjs` 和 `check-workspace-interactions-desktop.mjs`。带元数据的文档在即时和源码模式只列出正文标题，元数据的末行不再成为标题；点选后光标进入对应标题或源码行，行号从元数据之后起算。结尾的 `---` 未写完时标题照常列出，补回后不变。即时模式末尾输入的三级标题按层级出现，保存后的 Markdown 与输入一致。Windows 实测，见 `check-outline-desktop.mjs`。 |
 | `NAV-04` 菜单和弹窗 | 用 `Tab` 访问工具栏，用方向键进入菜单，回车执行和 `Esc` 返回。分别在文件、标签、正文选区和光标位置打开上下文菜单，检查焦点恢复。 | 已通过菜单键盘导航、标签焦点和源码编辑菜单退出。见本地 `usability-smoke.mjs`、`editor-context-smoke.mjs`。 |
 | `NAV-05` 小窗口与键盘覆盖 | 用窄窗口检查宽窄工具栏入口和横向标签滚动。用键盘从菜单、编辑区到侧栏再返回，分别走 Tab 和反向 Tab。确认空列表、无结果、无活跃文档与禁用动作的提示。 | 方向导航、焦点返回、反向离开编辑区已通过。窄窗口及屏幕阅读器原生运行待实测。 |
 
@@ -157,7 +157,7 @@
 | --- | --- |
 | 单元检查与基础桌面流程 | `npm test`、`npm run test:desktop` |
 | 编辑与指针 | `node scripts/check-heading-shortcuts-desktop.mjs`、`node scripts/check-editing-shortcuts-desktop.mjs`、`node scripts/check-editor-pointer-desktop.mjs`、`node scripts/check-shift-tab-desktop.mjs`、`node scripts/check-typed-lists-desktop.mjs`、`node scripts/check-source-formatting-desktop.mjs`、`node scripts/check-live-inline-desktop.mjs` |
-| 文件与工作区 | `node scripts/check-file-creation-desktop.mjs`、`node scripts/check-workspace-interactions-desktop.mjs`、`node scripts/check-sidebar-tree-desktop.mjs`、`node scripts/check-sidebar-folders-desktop.mjs`、`node scripts/check-large-document-desktop.mjs` |
+| 文件与工作区 | `node scripts/check-file-creation-desktop.mjs`、`node scripts/check-workspace-interactions-desktop.mjs`、`node scripts/check-sidebar-tree-desktop.mjs`、`node scripts/check-sidebar-folders-desktop.mjs`、`node scripts/check-outline-desktop.mjs`、`node scripts/check-large-document-desktop.mjs` |
 | 设置、窗口与拼写检查 | `node scripts/check-settings-desktop.mjs`、`node scripts/check-window-interactions-desktop.mjs`、`node scripts/check-spellcheck-desktop.mjs` |
 | Markdown、HTML、审阅与交付 | `node scripts/check-markdown-desktop.mjs`、`node scripts/check-html-desktop.mjs`、`node scripts/check-review-workflows-desktop.mjs`、`node scripts/check-delivery-desktop.mjs` |
 | Git 文档历史与恢复 | `node scripts/check-git-document-history-desktop.mjs` |

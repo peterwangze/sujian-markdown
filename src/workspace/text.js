@@ -2,11 +2,26 @@ import { markdownLanguage } from '@codemirror/lang-markdown'
 
 export const MAX_LIVE_LENGTH = 200_000
 
+// A document may open with a block of metadata between two lines of three
+// dashes, which the editor shows as one block. Without this the closing
+// dashes underline the last line of the block as a heading. A block that is
+// never closed is read as the dashes alone, so that its headings are listed
+// while it is being written.
+function metadataEnd(lines) {
+  const first = lines.findIndex(line => line.trim())
+  if (first < 0 || lines[first].trim() !== '---') return 0
+  const close = lines.findIndex((line, index) => index > first && line.trim() === '---')
+  return close < 0 ? 0 : close + 1
+}
+
 export function headings(markdown) {
   const result = []
+  const lines = markdown.split(/\r?\n/)
+  const metadata = metadataEnd(lines)
   let fence
   let previous = ''
-  for (const [index, line] of markdown.split(/\r?\n/).entries()) {
+  for (const [index, line] of lines.entries()) {
+    if (index < metadata) continue
     const marker = line.match(/^ {0,3}(`{3,}|~{3,})/)
     if (marker) {
       if (!fence) fence = marker[1]

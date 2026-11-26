@@ -49,7 +49,8 @@ const args = ['--user-data-dir=' + profile, ...(executablePath ? [] : [project])
 let app, page
 const sidebar = () => page.getByRole('complementary', { name: '文件与大纲' })
 const row = name => sidebar().getByRole('button', { name, exact: true }).and(sidebar().locator('[data-sidebar-row]'))
-const tab = name => page.getByRole('tab', { name, exact: true })
+// A tab with unsaved changes is announced by that too, so it is told by its text.
+const tab = name => page.getByRole('tab').filter({ hasText: name })
 const live = () => page.locator('.editor-live .vditor-ir > .vditor-reset')
 const painted = () => page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))))
 
@@ -74,10 +75,14 @@ async function menu(name) {
   await page.locator('.tool-menu-list').getByRole('button', { name, exact: true }).click()
 }
 
-// Saves the open document and waits until it has no unsaved changes.
+// Saves the open document and waits until it has no unsaved changes. The
+// mark is awaited up first, so that waiting for it to go cannot pass before
+// the document is even known to be changed.
 async function save(name) {
+  const unsaved = tab(name).locator('[title="有未保存的改动"]')
+  await unsaved.waitFor({ state: 'attached' })
   await menu('保存')
-  await tab(name).locator('[title="有未保存的改动"]').waitFor({ state: 'detached' })
+  await unsaved.waitFor({ state: 'detached' })
 }
 
 // The browser reports how long each key kept the page busy, from its arrival
